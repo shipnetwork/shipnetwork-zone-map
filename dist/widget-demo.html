@@ -59,30 +59,28 @@
             margin-bottom: 20px;
         }
         
-        /* Different container sizes for testing */
+        /* Different container sizes for testing — no fixed heights,
+           let the widget size to its own content */
         .full-height {
-            height: calc(100vh - 200px);
-            min-height: 500px;
+            width: 100%;
         }
         
         .fixed-height {
-            height: 600px;
+            width: 600px;
+            margin: 0 auto;
         }
         
         .container-1319 {
             width: 1319px;
-            height: 800px;
             margin: 0 auto;
         }
         
         .mobile-size {
-            height: 500px;
             max-width: 375px;
             margin: 0 auto;
         }
         
         .tablet-size {
-            height: 600px;
             max-width: 768px;
             margin: 0 auto;
         }
@@ -224,7 +222,7 @@
             <!-- Widget will be inserted here -->
             <shipnetwork-zone-map 
                 id="zone-map"
-                style="width: 100%; height: 100%;">
+                style="width: 100%;">
             </shipnetwork-zone-map>
         </div>
         

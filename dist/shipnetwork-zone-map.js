@@ -1,4 +1,4 @@
-"use strict";var ShipNetworkZoneMap=(()=>{var u=Object.defineProperty;var k=Object.getOwnPropertyDescriptor;var v=Object.getOwnPropertyNames;var w=Object.prototype.hasOwnProperty;var y=(h,t,e)=>t in h?u(h,t,{enumerable:!0,configurable:!0,writable:!0,value:e}):h[t]=e;var M=(h,t)=>{for(var e in t)u(h,e,{get:t[e],enumerable:!0})},L=(h,t,e,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let o of v(t))!w.call(h,o)&&o!==e&&u(h,o,{get:()=>t[o],enumerable:!(i=k(t,o))||i.enumerable});return h};var S=h=>L(u({},"__esModule",{value:!0}),h);var n=(h,t,e)=>y(h,typeof t!="symbol"?t+"":t,e);var H={};M(H,{ShipNetworkZoneMap:()=>f});var b=class{constructor(t,e){n(this,"container");n(this,"sheet");n(this,"backdrop");n(this,"handle");n(this,"content");n(this,"state","collapsed");n(this,"startY",0);n(this,"currentY",0);n(this,"isDragging",!1);n(this,"listeners",new Map);this.container=t,this.createElements(e),this.attachEventListeners()}createElements(t){this.backdrop=document.createElement("div"),this.backdrop.className="bottom-sheet-backdrop",this.backdrop.style.cssText=`
+"use strict";var ShipNetworkZoneMap=(()=>{var u=Object.defineProperty;var E=Object.getOwnPropertyDescriptor;var w=Object.getOwnPropertyNames;var v=Object.prototype.hasOwnProperty;var y=(h,t,e)=>t in h?u(h,t,{enumerable:!0,configurable:!0,writable:!0,value:e}):h[t]=e;var M=(h,t)=>{for(var e in t)u(h,e,{get:t[e],enumerable:!0})},L=(h,t,e,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let o of w(t))!v.call(h,o)&&o!==e&&u(h,o,{get:()=>t[o],enumerable:!(i=E(t,o))||i.enumerable});return h};var S=h=>L(u({},"__esModule",{value:!0}),h);var n=(h,t,e)=>y(h,typeof t!="symbol"?t+"":t,e);var H={};M(H,{ShipNetworkZoneMap:()=>f});var b=class{constructor(t,e){n(this,"container");n(this,"sheet");n(this,"backdrop");n(this,"handle");n(this,"content");n(this,"state","collapsed");n(this,"startY",0);n(this,"currentY",0);n(this,"isDragging",!1);n(this,"listeners",new Map);this.container=t,this.createElements(e),this.attachEventListeners()}createElements(t){this.backdrop=document.createElement("div"),this.backdrop.className="bottom-sheet-backdrop",this.backdrop.style.cssText=`
       position: absolute;
       top: 0;
       left: 0;
@@ -131,7 +131,6 @@
       :host {
         display: block;
         width: 100%;
-        height: 100%;
       }
 
       * {
@@ -142,27 +141,29 @@
 
       .widget-container {
         width: 100%;
-        height: 100%;
+        max-width: 1319px;
+        margin: 0 auto;
         display: flex;
         flex-direction: column;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         background: #fff;
-        min-height: 600px;
+        container-type: inline-size;
+        container-name: widget;
       }
 
       /* Main 2-Column Grid */
       .main-grid {
         display: grid;
         grid-template-columns: 320px 1fr;
-        flex: 1;
-        overflow: hidden;
         gap: 0;
-        min-height: 0;
+        /* stretch is the default \u2014 both columns fill the row height driven
+           by the map's aspect-ratio, eliminating whitespace below */
+        align-items: stretch;
       }
 
       /* Locations Sidebar */
       .locations-sidebar {
-        background: #f8f9fa;
+        background: #dedfe0;
         padding: 24px 20px;
         overflow-y: auto;
         border-right: 1px solid #e0e0e0;
@@ -233,45 +234,92 @@
       .map-wrapper {
         position: relative;
         width: 100%;
-        height: 100%;
         overflow: hidden;
+        /* Shrink to the map's intrinsic height \u2014 prevents the column from
+           stretching taller than the map and creating whitespace */
+        align-self: start;
       }
 
       #map-container {
         width: 100%;
-        height: 100%;
+        aspect-ratio: 858 / 560;
         position: relative;
         overflow: hidden;
         background: transparent;
-        min-height: 400px;
+        display: block;
       }
 
-      /* Responsive adjustments */
-      @media (max-width: 1200px) {
-        .main-grid {
-          grid-template-columns: 280px 1fr;
-        }
-        
-        .locations-sidebar {
-          padding: 20px 16px;
-        }
-      }
+      /* Responsive adjustments \u2014 container queries fire based on the widget's
+         own width, not the viewport.
+         - Above 1000px (e.g. 1319px desktop): 2-column sidebar + map
+         - 1000px and below (tablet 768px, fixed 600px, mobile 375px): stacked */
 
-      @media (max-width: 768px) {
+      @container widget (max-width: 1000px) {
+        /* Stack: map on top, locations below */
         .main-grid {
-          grid-template-columns: 1fr;
-          grid-template-rows: auto 1fr;
+          display: flex;
+          flex-direction: column;
         }
 
+        /* Map on top */
+        .map-wrapper {
+          order: 1;
+          width: 100%;
+          align-self: auto;
+        }
+
+        /* Locations below */
         .locations-sidebar {
-          max-height: 300px;
+          order: 2;
           border-right: none;
-          border-bottom: 1px solid #e0e0e0;
+          border-top: 1px solid #e0e0e0;
+          padding: 16px;
+          max-height: none;
+          align-self: auto;
+        }
+
+        .sidebar-title {
+          font-size: 14px;
+          margin-bottom: 12px;
+        }
+
+        /* 2-column button grid */
+        .location-buttons-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .location-button {
+          padding: 10px 12px;
+          font-size: 13px;
+          border-radius: 8px;
+        }
+
+        .location-button-arrow {
+          display: none;
+        }
+
+        .location-button-text {
+          text-align: center;
         }
       }
 
-      /* Zipcode Footer */
+      /* Extra-narrow: tighten padding on small phones */
+      @container widget (max-width: 420px) {
+        .locations-sidebar {
+          padding: 12px;
+        }
+
+        .location-button {
+          font-size: 12px;
+          padding: 9px 10px;
+        }
+      }
+
+      /* Zipcode Footer \u2014 hidden until confirmed needed */
       .zipcode-footer {
+        display: none;
         padding: 20px 24px;
         background: #fff;
         border-top: 1px solid #e0e0e0;
@@ -314,7 +362,7 @@
       }
 
       /* Mobile footer adjustments */
-      @media (max-width: 768px) {
+      @container widget (max-width: 1000px) {
         .zipcode-footer {
           padding: 16px;
         }
@@ -707,4 +755,4 @@
           </div>
         </div>
       </div>
-    `}setupMobileEventListeners(){if(!this.bottomSheet)return;let e=this.bottomSheet.getContentElement(),i=e.querySelectorAll(".warehouse-checkbox");i.forEach(c=>{c.addEventListener("change",d=>{let E=d.target,m=E.dataset.warehouseId;m&&(E.checked?this.selectWarehouse(m):this.deselectWarehouse(m))})}),e.querySelector("#mobile-select-all")?.addEventListener("click",()=>this.selectAllWarehouses(i)),e.querySelector("#mobile-clear-all")?.addEventListener("click",()=>this.clearAllWarehouses(i));let s=e.querySelector("#mobile-calculate"),a=e.querySelector("#mobile-from-zip"),l=e.querySelector("#mobile-to-zip");s?.addEventListener("click",()=>{a&&l&&this.calculateCustomZones(a.value,l.value)}),e.querySelector("#mobile-clear")?.addEventListener("click",()=>this.clearCustomZones())}createDesktopUI(){}handleDeviceChange(e){this.container?.querySelectorAll(".mobile-control-trigger, .mobile-legend, .desktop-controls, .desktop-warehouse-panel, .desktop-legend")?.forEach(o=>o.remove()),this.bottomSheet&&(this.bottomSheet.destroy(),this.bottomSheet=null),this.createUI()}selectWarehouse(e){this.selectedWarehouses.add(e),this.updateWarehouseMarkerAppearance(e,!0),this.updateWarehouseZones(),this.dispatchEvent(new CustomEvent("warehouse-selected",{detail:{warehouseId:e,selected:!0},bubbles:!0,composed:!0}))}deselectWarehouse(e){this.selectedWarehouses.delete(e),this.updateWarehouseMarkerAppearance(e,!1),this.updateWarehouseZones(),this.dispatchEvent(new CustomEvent("warehouse-selected",{detail:{warehouseId:e,selected:!1},bubbles:!0,composed:!0}))}updateWarehouseMarkerAppearance(e,i){this.staticMap&&this.staticMap.updateMarkerAppearance(e,i)}selectAllWarehouses(e){e.forEach(i=>{i.checked=!0;let o=i.dataset.warehouseId;o&&this.selectWarehouse(o)})}clearAllWarehouses(e){e.forEach(i=>{i.checked=!1;let o=i.dataset.warehouseId;o&&this.deselectWarehouse(o)})}updateWarehouseZones(){if(!this.staticMap||this.selectedWarehouses.size===0){this.clearZones();return}let e=[];if(this.selectedWarehouses.forEach(r=>{let s=p.find(a=>a.id===r);s&&e.push(s.coordinates)}),e.length===0)return;let i=[],o=.3;for(let r=24;r<=50;r+=o)for(let s=-125;s<=-66;s+=o){let a=1/0;e.forEach(C=>{let c=this.zoneCalculator.calculateDistance(C[1],C[0],r,s),d=this.zoneCalculator.calculateZone(c);a=Math.min(a,d.zoneNumber)});let l=this.zoneCalculator.getZoneRanges().find(C=>C.zoneNumber===a);l&&i.push({zone:a,color:l.color,coordinates:[[[s,r],[s+o,r],[s+o,r+o],[s,r+o],[s,r]]]})}this.staticMap.drawZones(i)}clearZones(){this.staticMap&&this.staticMap.clearZones()}async calculateCustomZones(e,i){console.log("Calculate zones from",e,"to",i)}clearCustomZones(){this.originMarker=null,this.destinationMarker=null,this.clearZones()}};typeof window<"u"&&!customElements.get("shipnetwork-zone-map")&&customElements.define("shipnetwork-zone-map",f);return S(H);})();
+    `}setupMobileEventListeners(){if(!this.bottomSheet)return;let e=this.bottomSheet.getContentElement(),i=e.querySelectorAll(".warehouse-checkbox");i.forEach(c=>{c.addEventListener("change",d=>{let k=d.target,m=k.dataset.warehouseId;m&&(k.checked?this.selectWarehouse(m):this.deselectWarehouse(m))})}),e.querySelector("#mobile-select-all")?.addEventListener("click",()=>this.selectAllWarehouses(i)),e.querySelector("#mobile-clear-all")?.addEventListener("click",()=>this.clearAllWarehouses(i));let s=e.querySelector("#mobile-calculate"),a=e.querySelector("#mobile-from-zip"),l=e.querySelector("#mobile-to-zip");s?.addEventListener("click",()=>{a&&l&&this.calculateCustomZones(a.value,l.value)}),e.querySelector("#mobile-clear")?.addEventListener("click",()=>this.clearCustomZones())}createDesktopUI(){}handleDeviceChange(e){this.container?.querySelectorAll(".mobile-control-trigger, .mobile-legend, .desktop-controls, .desktop-warehouse-panel, .desktop-legend")?.forEach(o=>o.remove()),this.bottomSheet&&(this.bottomSheet.destroy(),this.bottomSheet=null),this.createUI()}selectWarehouse(e){this.selectedWarehouses.add(e),this.updateWarehouseMarkerAppearance(e,!0),this.updateWarehouseZones(),this.dispatchEvent(new CustomEvent("warehouse-selected",{detail:{warehouseId:e,selected:!0},bubbles:!0,composed:!0}))}deselectWarehouse(e){this.selectedWarehouses.delete(e),this.updateWarehouseMarkerAppearance(e,!1),this.updateWarehouseZones(),this.dispatchEvent(new CustomEvent("warehouse-selected",{detail:{warehouseId:e,selected:!1},bubbles:!0,composed:!0}))}updateWarehouseMarkerAppearance(e,i){this.staticMap&&this.staticMap.updateMarkerAppearance(e,i)}selectAllWarehouses(e){e.forEach(i=>{i.checked=!0;let o=i.dataset.warehouseId;o&&this.selectWarehouse(o)})}clearAllWarehouses(e){e.forEach(i=>{i.checked=!1;let o=i.dataset.warehouseId;o&&this.deselectWarehouse(o)})}updateWarehouseZones(){if(!this.staticMap||this.selectedWarehouses.size===0){this.clearZones();return}let e=[];if(this.selectedWarehouses.forEach(r=>{let s=p.find(a=>a.id===r);s&&e.push(s.coordinates)}),e.length===0)return;let i=[],o=.3;for(let r=24;r<=50;r+=o)for(let s=-125;s<=-66;s+=o){let a=1/0;e.forEach(C=>{let c=this.zoneCalculator.calculateDistance(C[1],C[0],r,s),d=this.zoneCalculator.calculateZone(c);a=Math.min(a,d.zoneNumber)});let l=this.zoneCalculator.getZoneRanges().find(C=>C.zoneNumber===a);l&&i.push({zone:a,color:l.color,coordinates:[[[s,r],[s+o,r],[s+o,r+o],[s,r+o],[s,r]]]})}this.staticMap.drawZones(i)}clearZones(){this.staticMap&&this.staticMap.clearZones()}async calculateCustomZones(e,i){console.log("Calculate zones from",e,"to",i)}clearCustomZones(){this.originMarker=null,this.destinationMarker=null,this.clearZones()}};typeof window<"u"&&!customElements.get("shipnetwork-zone-map")&&customElements.define("shipnetwork-zone-map",f);return S(H);})();

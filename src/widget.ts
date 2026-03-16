@@ -85,7 +85,6 @@ export class ShipNetworkZoneMap extends HTMLElement {
       :host {
         display: block;
         width: 100%;
-        height: 100%;
       }
 
       * {
@@ -96,27 +95,29 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
       .widget-container {
         width: 100%;
-        height: 100%;
+        max-width: 1319px;
+        margin: 0 auto;
         display: flex;
         flex-direction: column;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         background: #fff;
-        min-height: 600px;
+        container-type: inline-size;
+        container-name: widget;
       }
 
       /* Main 2-Column Grid */
       .main-grid {
         display: grid;
         grid-template-columns: 320px 1fr;
-        flex: 1;
-        overflow: hidden;
         gap: 0;
-        min-height: 0;
+        /* stretch is the default — both columns fill the row height driven
+           by the map's aspect-ratio, eliminating whitespace below */
+        align-items: stretch;
       }
 
       /* Locations Sidebar */
       .locations-sidebar {
-        background: #f8f9fa;
+        background: #dedfe0;
         padding: 24px 20px;
         overflow-y: auto;
         border-right: 1px solid #e0e0e0;
@@ -187,45 +188,92 @@ export class ShipNetworkZoneMap extends HTMLElement {
       .map-wrapper {
         position: relative;
         width: 100%;
-        height: 100%;
         overflow: hidden;
+        /* Shrink to the map's intrinsic height — prevents the column from
+           stretching taller than the map and creating whitespace */
+        align-self: start;
       }
 
       #map-container {
         width: 100%;
-        height: 100%;
+        aspect-ratio: 858 / 560;
         position: relative;
         overflow: hidden;
         background: transparent;
-        min-height: 400px;
+        display: block;
       }
 
-      /* Responsive adjustments */
-      @media (max-width: 1200px) {
-        .main-grid {
-          grid-template-columns: 280px 1fr;
-        }
-        
-        .locations-sidebar {
-          padding: 20px 16px;
-        }
-      }
+      /* Responsive adjustments — container queries fire based on the widget's
+         own width, not the viewport.
+         - Above 1000px (e.g. 1319px desktop): 2-column sidebar + map
+         - 1000px and below (tablet 768px, fixed 600px, mobile 375px): stacked */
 
-      @media (max-width: 768px) {
+      @container widget (max-width: 1000px) {
+        /* Stack: map on top, locations below */
         .main-grid {
-          grid-template-columns: 1fr;
-          grid-template-rows: auto 1fr;
+          display: flex;
+          flex-direction: column;
         }
 
+        /* Map on top */
+        .map-wrapper {
+          order: 1;
+          width: 100%;
+          align-self: auto;
+        }
+
+        /* Locations below */
         .locations-sidebar {
-          max-height: 300px;
+          order: 2;
           border-right: none;
-          border-bottom: 1px solid #e0e0e0;
+          border-top: 1px solid #e0e0e0;
+          padding: 16px;
+          max-height: none;
+          align-self: auto;
+        }
+
+        .sidebar-title {
+          font-size: 14px;
+          margin-bottom: 12px;
+        }
+
+        /* 2-column button grid */
+        .location-buttons-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .location-button {
+          padding: 10px 12px;
+          font-size: 13px;
+          border-radius: 8px;
+        }
+
+        .location-button-arrow {
+          display: none;
+        }
+
+        .location-button-text {
+          text-align: center;
         }
       }
 
-      /* Zipcode Footer */
+      /* Extra-narrow: tighten padding on small phones */
+      @container widget (max-width: 420px) {
+        .locations-sidebar {
+          padding: 12px;
+        }
+
+        .location-button {
+          font-size: 12px;
+          padding: 9px 10px;
+        }
+      }
+
+      /* Zipcode Footer — hidden until confirmed needed */
       .zipcode-footer {
+        display: none;
         padding: 20px 24px;
         background: #fff;
         border-top: 1px solid #e0e0e0;
@@ -268,7 +316,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
       }
 
       /* Mobile footer adjustments */
-      @media (max-width: 768px) {
+      @container widget (max-width: 1000px) {
         .zipcode-footer {
           padding: 16px;
         }
