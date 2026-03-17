@@ -100,7 +100,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
         display: flex;
         flex-direction: column;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        background: #fff;
+        background: transparent;
         container-type: inline-size;
         container-name: widget;
       }
@@ -117,10 +117,10 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
       /* Locations Sidebar */
       .locations-sidebar {
-        background: #dedfe0;
+        background: transparent;
         padding: 24px 20px;
         overflow-y: auto;
-        border-right: 1px solid #e0e0e0;
+        border-right: none;
       }
 
       .sidebar-title {
@@ -226,7 +226,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
         .locations-sidebar {
           order: 2;
           border-right: none;
-          border-top: 1px solid #e0e0e0;
+          border-top: none;
           padding: 16px;
           max-height: none;
           align-self: auto;
