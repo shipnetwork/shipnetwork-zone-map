@@ -61,6 +61,19 @@ export class ShipNetworkZoneMap extends HTMLElement {
         <aside class="locations-sidebar">
           <h2 class="sidebar-title">Our Warehouse Locations</h2>
           <div class="location-buttons-grid" id="location-buttons-grid"></div>
+          <div class="zone-legend">
+            <p class="zone-legend-title">Shipping Zones</p>
+            <div class="zone-legend-grid">
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FFE4F6"></span><span class="zone-label">Zone 1 · 1–2 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#8486FF"></span><span class="zone-label">Zone 2 · 1–2 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#90C1FF"></span><span class="zone-label">Zone 3 · 2–3 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#A3FFFF"></span><span class="zone-label">Zone 4 · 2–3 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#A5FF8F"></span><span class="zone-label">Zone 5 · 3–4 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FFFF90"></span><span class="zone-label">Zone 6 · 4–5 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FCC18A"></span><span class="zone-label">Zone 7 · 5–6 days</span></div>
+              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FC8A8A"></span><span class="zone-label">Zone 8 · 6–8 days</span></div>
+            </div>
+          </div>
         </aside>
         <div class="map-wrapper">
           <div id="map-container"></div>
@@ -82,6 +95,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
   private getStyles(): string {
     return `
+      @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@600;700&display=swap');
+
       :host {
         display: block;
         width: 100%;
@@ -108,10 +123,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
       /* Main 2-Column Grid */
       .main-grid {
         display: grid;
-        grid-template-columns: 320px 1fr;
+        grid-template-columns: 480px 1fr;
         gap: 0;
-        /* stretch is the default — both columns fill the row height driven
-           by the map's aspect-ratio, eliminating whitespace below */
         align-items: stretch;
       }
 
@@ -133,8 +146,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
       }
 
       .location-buttons-grid {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 10px;
       }
 
@@ -142,46 +155,113 @@ export class ShipNetworkZoneMap extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 14px 16px;
+        padding: 0 8px 0 16px;
+        height: 40px;
         background: white;
-        border: 1px solid #e0e0e0;
-        border-radius: 10px;
+        border: 1px solid rgba(4, 12, 51, 0.15);
+        border-radius: 5px;
         cursor: pointer;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 14px;
-        color: #333;
+        font-weight: 600;
+        color: #ADADAD;
         transition: all 0.2s ease;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: none;
         width: 100%;
       }
 
       .location-button:hover {
-        background: #f8f9fa;
-        border-color: #ccc;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        transform: translateY(-1px);
+        background: white;
+        border-color: #B7DEFF;
+        color: #050C32;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       }
 
       .location-button.selected {
-        background: #667eea;
-        color: white;
-        border-color: #667eea;
-        box-shadow: 0 3px 8px rgba(102, 126, 234, 0.3);
+        background: white;
+        color: #111;
+        border-color: #3b9eff;
+        box-shadow: 0 0 0 1px #3b9eff, 0 4px 12px rgba(59, 158, 255, 0.15);
       }
 
       .location-button-text {
-        font-weight: 500;
+        font-weight: 600;
         flex: 1;
         text-align: left;
       }
 
-      .location-button-arrow {
-        margin-left: 8px;
-        opacity: 0.5;
-        font-size: 16px;
+      .location-button.selected .location-button-text {
+        font-weight: 700;
+        color: #111;
       }
 
-      .location-button.selected .location-button-arrow {
-        opacity: 0.9;
+      /* Arrow badge — gray rectangle behind icon */
+      .location-button-arrow {
+        margin-left: 10px;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #F5F4F2;
+        border-radius: 5px;
+        flex-shrink: 0;
+        transition: all 0.2s ease;
+      }
+
+      .location-button-arrow svg path {
+        stroke: #ADADAD;
+        transition: stroke 0.2s ease;
+      }
+
+      /* Selected: blue arrow, keep badge */
+      .location-button.selected .location-button-arrow svg path {
+        stroke: #3b9eff;
+      }
+
+      /* Zone Legend */
+      .zone-legend {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(4, 12, 51, 0.08);
+      }
+
+      .zone-legend-title {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ADADAD;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin: 0 0 10px 0;
+      }
+
+      .zone-legend-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+      }
+
+      .zone-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .zone-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        border: 1px solid rgba(0,0,0,0.06);
+      }
+
+      .zone-label {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ADADAD;
+        white-space: nowrap;
       }
 
       /* Map Wrapper - Responsive */
@@ -753,7 +833,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
       button.dataset.warehouseId = warehouse.id;
       button.innerHTML = `
         <span class="location-button-text">${warehouse.city}, ${warehouse.state}</span>
-        <span class="location-button-arrow">→</span>
+        <span class="location-button-arrow"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.65989 0.95298L10.5965 0.699711L10.9597 8.54346M0.798361 9.95344L10.5965 0.699711L0.798361 9.95344Z" stroke="#ADADAD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       `;
       
       button.addEventListener('click', () => {
