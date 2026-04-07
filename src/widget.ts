@@ -19,7 +19,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
   private warehouseMarkers: Map<string, WarehouseMarkerData> = new Map();
   private selectedWarehouses: Set<string> = new Set();
-  private activeService: ServiceType = 'ground';
+  private activeService: ServiceType | null = null;
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -34,6 +34,10 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   connectedCallback() {
+    // Override any external height (e.g. Webflow fixed height) so the widget
+    // always sizes to its own content and the stats panel pushes content down
+    this.style.height = 'auto';
+    this.style.display = 'block';
     this.render();
     this.initializeMap();
   }
@@ -965,16 +969,25 @@ export class ShipNetworkZoneMap extends HTMLElement {
     // Populate legend dynamically so it reflects the active service
     this.updateLegend();
 
-    // Wire service toggle pills
+    // Wire service toggle pills — clicking an active pill deselects it
     const pillContainer = this.shadow.querySelector('#service-toggle-pills');
     if (pillContainer) {
       pillContainer.querySelectorAll<HTMLButtonElement>('.service-pill').forEach((pill) => {
         pill.addEventListener('click', () => {
-          this.activeService = pill.dataset.service as ServiceType;
+          const isAlreadyActive = pill.classList.contains('selected');
           pillContainer.querySelectorAll('.service-pill').forEach((p) => p.classList.remove('selected'));
-          pill.classList.add('selected');
-          this.updateLegend();
-          this.updateWarehouseZones();
+
+          if (isAlreadyActive) {
+            // Toggle off — clear zones and hide stats
+            this.activeService = null;
+            this.clearZones();
+            this.updateStats();
+          } else {
+            this.activeService = pill.dataset.service as ServiceType;
+            pill.classList.add('selected');
+            this.updateLegend();
+            this.updateWarehouseZones();
+          }
         });
       });
     }
@@ -1039,10 +1052,11 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private updateLegend() {
     const grid = this.shadow.querySelector('#zone-legend-grid');
     if (!grid) return;
+    const service = this.activeService ?? 'ground';
     const zones = this.zoneCalculator.getZoneRanges();
     grid.innerHTML = zones.map((z) => {
-      const color = z.colors[this.activeService];
-      const days = z.transitDays[this.activeService];
+      const color = z.colors[service];
+      const days = z.transitDays[service];
       return `<div class="zone-legend-item">
         <span class="zone-swatch" style="background:${color}"></span>
         <span class="zone-label">Zone ${z.zoneNumber} · ${days}</span>
@@ -1055,7 +1069,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
     const statsPanel = this.shadow.querySelector('#stats-panel') as HTMLElement | null;
     if (!statsPanel) return;
 
-    if (this.selectedWarehouses.size === 0) {
+    if (this.selectedWarehouses.size === 0 || !this.activeService) {
       statsPanel.style.display = 'none';
       return;
     }
@@ -1271,7 +1285,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   private updateWarehouseZones() {
-    if (!this.staticMap || this.selectedWarehouses.size === 0) {
+    if (!this.staticMap || this.selectedWarehouses.size === 0 || !this.activeService) {
       this.clearZones();
       this.updateStats();
       return;
@@ -1304,7 +1318,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
         if (isFinite(minZone)) {
           // Use the per-service colour for this zone
-          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
+          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService ?? 'ground');
           zoneFeatures.push({
             zone: minZone,
             color,
