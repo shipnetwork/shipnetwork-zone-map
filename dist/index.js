@@ -34107,23 +34107,25 @@
         <aside class="locations-sidebar">
           <h2 class="sidebar-title">Our Warehouse Locations</h2>
           <div class="location-buttons-grid" id="location-buttons-grid"></div>
+
+          <div class="service-section">
+            <h2 class="sidebar-title">KNCT Service</h2>
+            <div class="service-buttons-grid" id="service-toggle-pills">
+              ${SERVICES.map((s3) => `
+                <button class="location-button service-pill${s3.id === "ground" ? " selected" : ""}" data-service="${s3.id}">
+                  <span class="location-button-text">${s3.label} \xB7 ${s3.tagline}</span>
+                  <span class="location-button-arrow"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.65989 0.95298L10.5965 0.699711L10.9597 8.54346M0.798361 9.95344L10.5965 0.699711L0.798361 9.95344Z" stroke="#ADADAD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                </button>
+              `).join("")}
+            </div>
+          </div>
+
           <div class="zone-legend" id="zone-legend">
             <p class="zone-legend-title">Shipping Zones</p>
             <div class="zone-legend-grid" id="zone-legend-grid"></div>
           </div>
         </aside>
         <div class="map-wrapper">
-          <div class="service-toggle-bar">
-            <span class="service-toggle-label">KNCT Service</span>
-            <div class="service-toggle-pills" id="service-toggle-pills">
-              ${SERVICES.map((s3) => `
-                <button class="service-pill${s3.id === "ground" ? " active" : ""}" data-service="${s3.id}">
-                  <span class="service-pill-name">${s3.label}</span>
-                  <span class="service-pill-days">${s3.tagline}</span>
-                </button>
-              `).join("")}
-            </div>
-          </div>
           <div id="map-container"></div>
         </div>
       </div>
@@ -34304,8 +34306,8 @@
 
       .zone-legend-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px 12px;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 6px 10px;
       }
 
       .zone-legend-item {
@@ -34335,9 +34337,9 @@
         position: relative;
         width: 100%;
         overflow: hidden;
-        /* Shrink to the map's intrinsic height \u2014 prevents the column from
-           stretching taller than the map and creating whitespace */
         align-self: start;
+        /* Push map down to align with 'Our Warehouse Locations' header */
+        padding-top: 20px;
       }
 
       #map-container {
@@ -34491,68 +34493,16 @@
       }
 
       /* \u2500\u2500 Service Toggle \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-      .service-toggle-bar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
-        background: transparent;
+      .service-section {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(4, 12, 51, 0.08);
       }
 
-      .service-toggle-label {
-        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-size: 11px;
-        font-weight: 600;
-        color: #ADADAD;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        white-space: nowrap;
-      }
-
-      .service-toggle-pills {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-
-      .service-pill {
+      .service-buttons-grid {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        padding: 6px 14px;
-        background: white;
-        border: 1px solid rgba(4, 12, 51, 0.15);
-        border-radius: 20px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-
-      .service-pill:hover {
-        border-color: #B7DEFF;
-        color: #050C32;
-      }
-
-      .service-pill.active {
-        background: #050C32;
-        border-color: #050C32;
-        color: white;
-      }
-
-      .service-pill-name {
-        font-size: 12px;
-        font-weight: 600;
-        line-height: 1.2;
-      }
-
-      .service-pill-days {
-        font-size: 10px;
-        opacity: 0.7;
-        line-height: 1.2;
-      }
-
-      .service-pill.active .service-pill-days {
-        opacity: 0.85;
+        gap: 10px;
       }
 
       /* \u2500\u2500 Stats Panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
@@ -35038,8 +34988,8 @@
         pillContainer.querySelectorAll(".service-pill").forEach((pill) => {
           pill.addEventListener("click", () => {
             this.activeService = pill.dataset.service;
-            pillContainer.querySelectorAll(".service-pill").forEach((p3) => p3.classList.remove("active"));
-            pill.classList.add("active");
+            pillContainer.querySelectorAll(".service-pill").forEach((p3) => p3.classList.remove("selected"));
+            pill.classList.add("selected");
             this.updateLegend();
             this.updateWarehouseZones();
           });
