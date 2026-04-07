@@ -1,8 +1,9 @@
 import { BottomSheet, BottomSheetState } from './mobile-ui';
 import { DeviceType, ResponsiveManager } from './responsive';
 import { WAREHOUSES } from './warehouses';
-import { ZoneCalculator } from './zone-calculator';
+import { ZoneCalculator, SERVICES, type ServiceType } from './zone-calculator';
 import { StaticUSMap, type ZoneFeature } from './static-map';
+import { calculateNetworkStats, type NetworkStats } from './stats-calculator';
 
 interface WarehouseMarkerData {
   element: SVGCircleElement;
@@ -15,9 +16,10 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private zoneCalculator: ZoneCalculator;
   private responsiveManager: ResponsiveManager | null = null;
   private bottomSheet: BottomSheet | null = null;
-  
+
   private warehouseMarkers: Map<string, WarehouseMarkerData> = new Map();
   private selectedWarehouses: Set<string> = new Set();
+  private activeService: ServiceType = 'ground';
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -61,23 +63,45 @@ export class ShipNetworkZoneMap extends HTMLElement {
         <aside class="locations-sidebar">
           <h2 class="sidebar-title">Our Warehouse Locations</h2>
           <div class="location-buttons-grid" id="location-buttons-grid"></div>
-          <div class="zone-legend">
+          <div class="zone-legend" id="zone-legend">
             <p class="zone-legend-title">Shipping Zones</p>
-            <div class="zone-legend-grid">
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FFE4F6"></span><span class="zone-label">Zone 1 · 1–2 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#8486FF"></span><span class="zone-label">Zone 2 · 1–2 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#90C1FF"></span><span class="zone-label">Zone 3 · 2–3 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#A3FFFF"></span><span class="zone-label">Zone 4 · 2–3 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#A5FF8F"></span><span class="zone-label">Zone 5 · 3–4 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FFFF90"></span><span class="zone-label">Zone 6 · 4–5 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FCC18A"></span><span class="zone-label">Zone 7 · 5–6 days</span></div>
-              <div class="zone-legend-item"><span class="zone-swatch" style="background:#FC8A8A"></span><span class="zone-label">Zone 8 · 6–8 days</span></div>
-            </div>
+            <div class="zone-legend-grid" id="zone-legend-grid"></div>
           </div>
         </aside>
         <div class="map-wrapper">
+          <div class="service-toggle-bar">
+            <span class="service-toggle-label">KNCT Service</span>
+            <div class="service-toggle-pills" id="service-toggle-pills">
+              ${SERVICES.map((s) => `
+                <button class="service-pill${s.id === 'ground' ? ' active' : ''}" data-service="${s.id}">
+                  <span class="service-pill-name">${s.label}</span>
+                  <span class="service-pill-days">${s.tagline}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
           <div id="map-container"></div>
         </div>
+      </div>
+      <div class="stats-panel" id="stats-panel" style="display:none;">
+        <div class="stats-cards">
+          <div class="stats-card">
+            <div class="stats-card-value" id="stat-avg-zone">—</div>
+            <div class="stats-card-label">Avg Shipping Zone</div>
+          </div>
+          <div class="stats-card">
+            <div class="stats-card-value" id="stat-avg-days">—</div>
+            <div class="stats-card-label">Avg Days in Transit</div>
+          </div>
+          <div class="stats-card stats-card-highlight">
+            <div class="stats-card-value" id="stat-savings">—</div>
+            <div class="stats-card-label">Savings vs. Single DC</div>
+          </div>
+        </div>
+        <button class="pdf-download-btn" id="pdf-download-btn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download Report
+        </button>
       </div>
       <footer class="zipcode-footer">
         <p class="footer-label">Enter Zipcodes to get an idea on zones and days of shipping</p>
@@ -421,6 +445,171 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
         .zipcode-input:last-child::placeholder {
           content: 'To ZIP';
+        }
+      }
+
+      /* ── Service Toggle ─────────────────────────────────────── */
+      .service-toggle-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        background: transparent;
+      }
+
+      .service-toggle-label {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ADADAD;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        white-space: nowrap;
+      }
+
+      .service-toggle-pills {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .service-pill {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 6px 14px;
+        background: white;
+        border: 1px solid rgba(4, 12, 51, 0.15);
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      .service-pill:hover {
+        border-color: #B7DEFF;
+        color: #050C32;
+      }
+
+      .service-pill.active {
+        background: #050C32;
+        border-color: #050C32;
+        color: white;
+      }
+
+      .service-pill-name {
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .service-pill-days {
+        font-size: 10px;
+        opacity: 0.7;
+        line-height: 1.2;
+      }
+
+      .service-pill.active .service-pill-days {
+        opacity: 0.85;
+      }
+
+      /* ── Stats Panel ─────────────────────────────────────────── */
+      .stats-panel {
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        border-top: 1px solid rgba(4, 12, 51, 0.08);
+      }
+
+      .stats-cards {
+        display: flex;
+        gap: 0;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .stats-card {
+        flex: 1;
+        padding: 12px 20px;
+        text-align: center;
+        border-right: 1px solid rgba(4, 12, 51, 0.08);
+      }
+
+      .stats-card:last-child {
+        border-right: none;
+      }
+
+      .stats-card-value {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        color: #050C32;
+        line-height: 1.1;
+      }
+
+      .stats-card-label {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ADADAD;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+      }
+
+      .stats-card-highlight .stats-card-value {
+        color: #3b9eff;
+      }
+
+      /* ── PDF Download Button ─────────────────────────────────── */
+      .pdf-download-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: #050C32;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .pdf-download-btn:hover {
+        background: #1a2550;
+        box-shadow: 0 4px 12px rgba(5, 12, 50, 0.25);
+      }
+
+      .pdf-download-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      @container widget (max-width: 700px) {
+        .stats-panel {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .stats-cards {
+          flex-wrap: wrap;
+        }
+
+        .stats-card {
+          min-width: 120px;
+        }
+
+        .pdf-download-btn {
+          width: 100%;
+          justify-content: center;
         }
       }
 
@@ -823,6 +1012,23 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   private createUI() {
+    // Populate legend dynamically so it reflects the active service
+    this.updateLegend();
+
+    // Wire service toggle pills
+    const pillContainer = this.shadow.querySelector('#service-toggle-pills');
+    if (pillContainer) {
+      pillContainer.querySelectorAll<HTMLButtonElement>('.service-pill').forEach((pill) => {
+        pill.addEventListener('click', () => {
+          this.activeService = pill.dataset.service as ServiceType;
+          pillContainer.querySelectorAll('.service-pill').forEach((p) => p.classList.remove('active'));
+          pill.classList.add('active');
+          this.updateLegend();
+          this.updateWarehouseZones();
+        });
+      });
+    }
+
     // Populate location buttons
     const buttonGrid = this.shadow.querySelector('#location-buttons-grid');
     if (!buttonGrid) return;
@@ -835,7 +1041,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
         <span class="location-button-text">${warehouse.city}, ${warehouse.state}</span>
         <span class="location-button-arrow"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.65989 0.95298L10.5965 0.699711L10.9597 8.54346M0.798361 9.95344L10.5965 0.699711L0.798361 9.95344Z" stroke="#ADADAD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       `;
-      
+
       button.addEventListener('click', () => {
         if (this.selectedWarehouses.has(warehouse.id)) {
           this.selectedWarehouses.delete(warehouse.id);
@@ -848,30 +1054,82 @@ export class ShipNetworkZoneMap extends HTMLElement {
         }
         this.updateWarehouseZones();
       });
-      
+
       buttonGrid.appendChild(button);
     });
+
+    // Wire PDF download button
+    const pdfBtn = this.shadow.querySelector('#pdf-download-btn');
+    pdfBtn?.addEventListener('click', () => this.generatePDF());
 
     // Wire up zipcode inputs
     const fromZip = this.shadow.querySelector('#from-zipcode') as HTMLInputElement;
     const toZip = this.shadow.querySelector('#to-zipcode') as HTMLInputElement;
-    
+
     if (fromZip && toZip) {
       const handleCalculate = () => {
         if (fromZip.value.length === 5 && toZip.value.length === 5) {
           this.calculateCustomZones(fromZip.value, toZip.value);
         }
       };
-      
+
       fromZip.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleCalculate();
       });
-      
+
       toZip.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleCalculate();
       });
-      
+
       toZip.addEventListener('blur', handleCalculate);
+    }
+  }
+
+  /** Rebuild the legend swatches to reflect the active service's colours & day labels */
+  private updateLegend() {
+    const grid = this.shadow.querySelector('#zone-legend-grid');
+    if (!grid) return;
+    const zones = this.zoneCalculator.getZoneRanges();
+    grid.innerHTML = zones.map((z) => {
+      const color = z.colors[this.activeService];
+      const days = z.transitDays[this.activeService];
+      return `<div class="zone-legend-item">
+        <span class="zone-swatch" style="background:${color}"></span>
+        <span class="zone-label">Zone ${z.zoneNumber} · ${days}</span>
+      </div>`;
+    }).join('');
+  }
+
+  /** Recalculate and display network stats, show/hide stats panel */
+  private updateStats() {
+    const statsPanel = this.shadow.querySelector('#stats-panel') as HTMLElement | null;
+    if (!statsPanel) return;
+
+    if (this.selectedWarehouses.size === 0) {
+      statsPanel.style.display = 'none';
+      return;
+    }
+
+    const selectedWhs = WAREHOUSES.filter((wh) => this.selectedWarehouses.has(wh.id));
+    const stats = calculateNetworkStats(selectedWhs, this.activeService, this.zoneCalculator);
+
+    if (!stats) {
+      statsPanel.style.display = 'none';
+      return;
+    }
+
+    statsPanel.style.display = 'flex';
+
+    const avgZoneEl = this.shadow.querySelector('#stat-avg-zone');
+    const avgDaysEl = this.shadow.querySelector('#stat-avg-days');
+    const savingsEl = this.shadow.querySelector('#stat-savings');
+
+    if (avgZoneEl) avgZoneEl.textContent = `Zone ${stats.avgZone}`;
+    if (avgDaysEl) avgDaysEl.textContent = stats.avgTransitDays;
+    if (savingsEl) {
+      savingsEl.textContent = stats.savingsVsSingleDC > 0
+        ? `${stats.savingsVsSingleDC}%`
+        : '—';
     }
   }
 
@@ -1065,6 +1323,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private updateWarehouseZones() {
     if (!this.staticMap || this.selectedWarehouses.size === 0) {
       this.clearZones();
+      this.updateStats();
       return;
     }
 
@@ -1078,7 +1337,6 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     if (selectedCoords.length === 0) return;
 
-    // Calculate minimum zones using grid
     const zoneFeatures: ZoneFeature[] = [];
     const gridSize = 0.3;
 
@@ -1094,12 +1352,12 @@ export class ShipNetworkZoneMap extends HTMLElement {
           minZone = Math.min(minZone, zone.zoneNumber);
         });
 
-        const zoneObj = this.zoneCalculator.getZoneRanges().find((z) => z.zoneNumber === minZone);
-
-        if (zoneObj) {
+        if (isFinite(minZone)) {
+          // Use the per-service colour for this zone
+          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
           zoneFeatures.push({
             zone: minZone,
-            color: zoneObj.color,
+            color,
             coordinates: [[
               [lng, lat],
               [lng + gridSize, lat],
@@ -1112,8 +1370,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
       }
     }
 
-    // Draw zones on static map
     this.staticMap.drawZones(zoneFeatures);
+    this.updateStats();
   }
 
   private clearZones() {
@@ -1130,10 +1388,128 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   private clearCustomZones() {
-    // Clear any custom markers if they exist
     this.originMarker = null;
     this.destinationMarker = null;
     this.clearZones();
+  }
+
+  private async generatePDF() {
+    const btn = this.shadow.querySelector('#pdf-download-btn') as HTMLButtonElement | null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const mapContainer = this.shadow.querySelector('#map-container') as HTMLElement | null;
+
+      // --- Gather stats ---
+      const selectedWhs = WAREHOUSES.filter((wh) => this.selectedWarehouses.has(wh.id));
+      const stats = calculateNetworkStats(selectedWhs, this.activeService, this.zoneCalculator);
+      const serviceDef = SERVICES.find((s) => s.id === this.activeService)!;
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 14;
+
+      // ── Header ──────────────────────────────────────────────
+      doc.setFillColor(5, 12, 50);
+      doc.rect(0, 0, pageW, 22, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ShipNetwork — Zone Analysis Report', margin, 14);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.text(`${serviceDef.label} Service (${serviceDef.days} days)  ·  Generated ${dateStr}`, pageW - margin, 14, { align: 'right' });
+
+      let cursorY = 30;
+
+      // ── Map screenshot ───────────────────────────────────────
+      if (mapContainer) {
+        const canvas = await html2canvas(mapContainer, { scale: 1.5, useCORS: true, backgroundColor: null });
+        const imgData = canvas.toDataURL('image/png');
+        const maxMapW = pageW - margin * 2;
+        const ratio = canvas.height / canvas.width;
+        const mapImgH = Math.min(maxMapW * ratio, pageH * 0.45);
+        const mapImgW = mapImgH / ratio;
+        doc.addImage(imgData, 'PNG', margin, cursorY, mapImgW, mapImgH);
+        cursorY += mapImgH + 8;
+      }
+
+      // ── Stats row ────────────────────────────────────────────
+      if (stats) {
+        const cardW = (pageW - margin * 2) / 3;
+        const cards = [
+          { label: 'Avg Shipping Zone', value: `Zone ${stats.avgZone}` },
+          { label: 'Avg Days in Transit', value: stats.avgTransitDays },
+          { label: 'Savings vs Single DC', value: stats.savingsVsSingleDC > 0 ? `${stats.savingsVsSingleDC}%` : 'N/A (1 DC)' },
+        ];
+
+        cards.forEach((card, i) => {
+          const x = margin + i * cardW;
+          doc.setFillColor(248, 249, 250);
+          doc.roundedRect(x, cursorY, cardW - 3, 22, 2, 2, 'F');
+          doc.setTextColor(5, 12, 50);
+          doc.setFontSize(16);
+          doc.setFont('helvetica', 'bold');
+          doc.text(card.value, x + cardW / 2 - 1.5, cursorY + 11, { align: 'center' });
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(130, 130, 130);
+          doc.text(card.label.toUpperCase(), x + cardW / 2 - 1.5, cursorY + 18, { align: 'center' });
+        });
+
+        cursorY += 28;
+
+        // ── Per-warehouse table ──────────────────────────────────
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(5, 12, 50);
+        doc.text('Warehouse Breakdown', margin, cursorY);
+        cursorY += 5;
+
+        const colW = [90, 40, 60];
+        const headers = ['Warehouse', 'Avg Zone', 'Avg Transit'];
+        const rows = stats.perWarehouse.map((w) => [w.warehouseName, `Zone ${w.avgZone}`, w.avgTransitDays]);
+
+        // Header row
+        doc.setFillColor(5, 12, 50);
+        doc.rect(margin, cursorY, colW[0] + colW[1] + colW[2], 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        let cx = margin + 3;
+        headers.forEach((h, i) => { doc.text(h, cx, cursorY + 5); cx += colW[i]; });
+        cursorY += 7;
+
+        // Data rows
+        rows.forEach((row, ri) => {
+          doc.setFillColor(ri % 2 === 0 ? 248 : 255, ri % 2 === 0 ? 249 : 255, ri % 2 === 0 ? 250 : 255);
+          doc.rect(margin, cursorY, colW[0] + colW[1] + colW[2], 6.5, 'F');
+          doc.setTextColor(50, 50, 50);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          cx = margin + 3;
+          row.forEach((cell, i) => { doc.text(cell, cx, cursorY + 4.5); cx += colW[i]; });
+          cursorY += 6.5;
+        });
+      }
+
+      // ── Footer ──────────────────────────────────────────────
+      doc.setFontSize(7);
+      doc.setTextColor(180, 180, 180);
+      doc.setFont('helvetica', 'normal');
+      doc.text('ShipNetwork · Shipping Zone Analysis  |  Data is estimated and based on representative US ZIP destinations.', margin, pageH - 6);
+
+      doc.save(`ShipNetwork-Zone-Analysis-${serviceDef.label}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Download Report'; }
+    }
   }
 }
 
