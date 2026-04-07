@@ -20,6 +20,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private warehouseMarkers: Map<string, WarehouseMarkerData> = new Map();
   private selectedWarehouses: Set<string> = new Set();
   private activeService: ServiceType | null = null;
+  private activeZones: Set<number> = new Set();
+  private statsWereVisible = false;
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -292,6 +294,21 @@ export class ShipNetworkZoneMap extends HTMLElement {
         font-weight: 600;
         color: #ADADAD;
         white-space: nowrap;
+        transition: color 0.2s ease, font-weight 0.2s ease;
+      }
+
+      .zone-legend-item.active .zone-label {
+        color: #050C32;
+        font-weight: 700;
+      }
+
+      .zone-legend-item.inactive .zone-label {
+        color: #C4C4C4;
+        font-weight: 400;
+      }
+
+      .zone-legend-item.inactive .zone-swatch {
+        opacity: 0.35;
       }
 
       /* Map Wrapper - Responsive */
@@ -1054,11 +1071,15 @@ export class ShipNetworkZoneMap extends HTMLElement {
     if (!grid) return;
     const service = this.activeService ?? 'ground';
     const zones = this.zoneCalculator.getZoneRanges();
+    const hasActiveFilter = this.activeZones.size > 0;
     grid.innerHTML = zones.map((z) => {
       const color = z.colors[service];
       const days = z.transitDays[service];
-      return `<div class="zone-legend-item">
-        <span class="zone-swatch" style="background:${color}"></span>
+      const isActive = !hasActiveFilter || this.activeZones.has(z.zoneNumber);
+      const swatchColor = isActive ? color : '#D1D5DB';
+      const itemClass = isActive ? 'zone-legend-item active' : 'zone-legend-item inactive';
+      return `<div class="${itemClass}">
+        <span class="zone-swatch" style="background:${swatchColor}"></span>
         <span class="zone-label">Zone ${z.zoneNumber} · ${days}</span>
       </div>`;
     }).join('');
@@ -1071,6 +1092,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     if (this.selectedWarehouses.size === 0 || !this.activeService) {
       statsPanel.style.display = 'none';
+      this.statsWereVisible = false;
       return;
     }
 
@@ -1079,10 +1101,17 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     if (!stats) {
       statsPanel.style.display = 'none';
+      this.statsWereVisible = false;
       return;
     }
 
     statsPanel.style.display = 'flex';
+
+    // Scroll just enough so the panel is visible — only on first appearance
+    if (!this.statsWereVisible) {
+      setTimeout(() => statsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+      this.statsWereVisible = true;
+    }
 
     const avgZoneEl = this.shadow.querySelector('#stat-avg-zone');
     const avgDaysEl = this.shadow.querySelector('#stat-avg-days');
@@ -1334,7 +1363,11 @@ export class ShipNetworkZoneMap extends HTMLElement {
       }
     }
 
+    // Track which zone numbers are actually rendered so the legend can reflect them
+    this.activeZones = new Set(zoneFeatures.map((f) => f.zone));
+
     this.staticMap.drawZones(zoneFeatures);
+    this.updateLegend();
     this.updateStats();
   }
 
@@ -1342,6 +1375,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
     if (this.staticMap) {
       this.staticMap.clearZones();
     }
+    this.activeZones = new Set();
+    this.updateLegend();
   }
 
   private async calculateCustomZones(fromZip: string, toZip: string) {
