@@ -33818,6 +33818,19 @@
       const y3 = SVG_HEIGHT - (mercY * this.scale + this.offsetY);
       return { x: x2, y: y3 };
     }
+    /** Convert canvas pixel coords back to [lng, lat] */
+    unproject(x2, y3) {
+      const lngRad = (x2 - this.offsetX) / this.scale;
+      const lng = lngRad * 180 / Math.PI;
+      const mercY = (SVG_HEIGHT - y3 - this.offsetY) / this.scale;
+      const latRad = 2 * Math.atan(Math.exp(mercY)) - Math.PI / 2;
+      const lat = latRad * 180 / Math.PI;
+      return { lng, lat };
+    }
+    /** Returns true if the canvas pixel point is inside the US outline */
+    isPointInUS(x2, y3) {
+      return this.ctx.isPointInPath(this.usClipPath, x2, y3);
+    }
     // ---------------------------------------------------------------------------
     // Zone drawing — clipped to the US outline so colours never bleed outside
     // ---------------------------------------------------------------------------
@@ -34129,6 +34142,7 @@
         </aside>
         <div class="map-wrapper">
           <div id="map-container"></div>
+          <div id="zone-tooltip" class="zone-tooltip" aria-hidden="true"></div>
         </div>
       </div>
       <div class="stats-panel" id="stats-panel" style="display:none;">
@@ -34342,6 +34356,28 @@
         align-self: start;
         /* Push map down to align with 'Our Warehouse Locations' header */
         padding-top: 20px;
+      }
+
+      .zone-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(5, 12, 50, 0.88);
+        color: #fff;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+        z-index: 20;
+        transform: translate(12px, -50%);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      }
+
+      .zone-tooltip.visible {
+        opacity: 1;
       }
 
       #map-container {
@@ -34959,11 +34995,67 @@
       resizeObserver.observe(mapContainer);
       this.createWarehouseMarkers();
       this.createUI();
+      this.initTooltip(mapContainer);
       this.dispatchEvent(new CustomEvent("map-ready", {
         detail: { map: this.staticMap },
         bubbles: true,
         composed: true
       }));
+    }
+    initTooltip(mapContainer) {
+      const tooltip = this.shadow.querySelector("#zone-tooltip");
+      if (!tooltip || !this.staticMap) return;
+      let rafId = 0;
+      mapContainer.addEventListener("mousemove", (e2) => {
+        if (!this.staticMap || this.selectedWarehouses.size === 0) {
+          tooltip.classList.remove("visible");
+          return;
+        }
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          if (!this.staticMap) return;
+          const rect = mapContainer.getBoundingClientRect();
+          const cssX = e2.clientX - rect.left;
+          const cssY = e2.clientY - rect.top;
+          const scaleX = 858 / rect.width;
+          const scaleY = 560 / rect.height;
+          const canvasX = cssX * scaleX;
+          const canvasY = cssY * scaleY;
+          if (!this.staticMap.isPointInUS(canvasX, canvasY)) {
+            tooltip.classList.remove("visible");
+            return;
+          }
+          const { lng, lat } = this.staticMap.unproject(canvasX, canvasY);
+          let minZone = Infinity;
+          this.selectedWarehouses.forEach((warehouseId) => {
+            const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
+            if (warehouse) {
+              const distance = this.zoneCalculator.calculateDistance(
+                warehouse.coordinates[1],
+                warehouse.coordinates[0],
+                lat,
+                lng
+              );
+              const zone = this.zoneCalculator.calculateZone(distance);
+              minZone = Math.min(minZone, zone.zoneNumber);
+            }
+          });
+          if (!isFinite(minZone)) {
+            tooltip.classList.remove("visible");
+            return;
+          }
+          const days = this.zoneCalculator.getTransitDays(minZone, this.activeService);
+          tooltip.textContent = `Zone ${minZone} \xB7 ${days}`;
+          const wrapperRect = tooltip.parentElement.getBoundingClientRect();
+          tooltip.style.left = `${e2.clientX - wrapperRect.left}px`;
+          tooltip.style.top = `${e2.clientY - wrapperRect.top}px`;
+          tooltip.classList.add("visible");
+        });
+      });
+      mapContainer.addEventListener("mouseleave", () => {
+        cancelAnimationFrame(rafId);
+        tooltip.classList.remove("visible");
+      });
     }
     createWarehouseMarkers() {
       if (!this.staticMap) return;

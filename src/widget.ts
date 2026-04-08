@@ -87,6 +87,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
         </aside>
         <div class="map-wrapper">
           <div id="map-container"></div>
+          <div id="zone-tooltip" class="zone-tooltip" aria-hidden="true"></div>
         </div>
       </div>
       <div class="stats-panel" id="stats-panel" style="display:none;">
@@ -302,6 +303,28 @@ export class ShipNetworkZoneMap extends HTMLElement {
         align-self: start;
         /* Push map down to align with 'Our Warehouse Locations' header */
         padding-top: 20px;
+      }
+
+      .zone-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(5, 12, 50, 0.88);
+        color: #fff;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+        z-index: 20;
+        transform: translate(12px, -50%);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      }
+
+      .zone-tooltip.visible {
+        opacity: 1;
       }
 
       #map-container {
@@ -934,13 +957,82 @@ export class ShipNetworkZoneMap extends HTMLElement {
     // Create UI and markers
     this.createWarehouseMarkers();
     this.createUI();
-    
+    this.initTooltip(mapContainer);
+
     // Dispatch ready event
     this.dispatchEvent(new CustomEvent('map-ready', { 
       detail: { map: this.staticMap },
       bubbles: true,
       composed: true
     }));
+  }
+
+  private initTooltip(mapContainer: HTMLElement) {
+    const tooltip = this.shadow.querySelector('#zone-tooltip') as HTMLElement | null;
+    if (!tooltip || !this.staticMap) return;
+
+    let rafId = 0;
+
+    mapContainer.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!this.staticMap || this.selectedWarehouses.size === 0) {
+        tooltip.classList.remove('visible');
+        return;
+      }
+
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!this.staticMap) return;
+
+        // Map mouse position to canvas coordinate space (canvas is CSS-scaled)
+        const rect = mapContainer.getBoundingClientRect();
+        const cssX = e.clientX - rect.left;
+        const cssY = e.clientY - rect.top;
+        const scaleX = 858 / rect.width;
+        const scaleY = 560 / rect.height;
+        const canvasX = cssX * scaleX;
+        const canvasY = cssY * scaleY;
+
+        // Only show tooltip when cursor is inside the US boundary
+        if (!this.staticMap.isPointInUS(canvasX, canvasY)) {
+          tooltip.classList.remove('visible');
+          return;
+        }
+
+        const { lng, lat } = this.staticMap.unproject(canvasX, canvasY);
+
+        // Find the minimum zone across all selected warehouses
+        let minZone = Infinity;
+        this.selectedWarehouses.forEach((warehouseId) => {
+          const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
+          if (warehouse) {
+            const distance = this.zoneCalculator.calculateDistance(
+              warehouse.coordinates[1], warehouse.coordinates[0], lat, lng
+            );
+            const zone = this.zoneCalculator.calculateZone(distance);
+            minZone = Math.min(minZone, zone.zoneNumber);
+          }
+        });
+
+        if (!isFinite(minZone)) {
+          tooltip.classList.remove('visible');
+          return;
+        }
+
+        const days = this.zoneCalculator.getTransitDays(minZone, this.activeService);
+        tooltip.textContent = `Zone ${minZone} · ${days}`;
+
+        // Position tooltip relative to the map-wrapper (tooltip's offset parent)
+        const wrapperRect = (tooltip.parentElement as HTMLElement).getBoundingClientRect();
+        tooltip.style.left = `${e.clientX - wrapperRect.left}px`;
+        tooltip.style.top = `${e.clientY - wrapperRect.top}px`;
+        tooltip.classList.add('visible');
+      });
+    });
+
+    mapContainer.addEventListener('mouseleave', () => {
+      cancelAnimationFrame(rafId);
+      tooltip.classList.remove('visible');
+    });
   }
 
   private createWarehouseMarkers() {

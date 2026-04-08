@@ -185,6 +185,21 @@ export class StaticUSMap {
     return { x, y };
   }
 
+  /** Convert canvas pixel coords back to [lng, lat] */
+  public unproject(x: number, y: number): { lng: number; lat: number } {
+    const lngRad = (x - this.offsetX) / this.scale;
+    const lng = (lngRad * 180) / Math.PI;
+    const mercY = (SVG_HEIGHT - y - this.offsetY) / this.scale;
+    const latRad = 2 * Math.atan(Math.exp(mercY)) - Math.PI / 2;
+    const lat = (latRad * 180) / Math.PI;
+    return { lng, lat };
+  }
+
+  /** Returns true if the canvas pixel point is inside the US outline */
+  public isPointInUS(x: number, y: number): boolean {
+    return this.ctx.isPointInPath(this.usClipPath, x, y);
+  }
+
   // ---------------------------------------------------------------------------
   // Zone drawing — clipped to the US outline so colours never bleed outside
   // ---------------------------------------------------------------------------
