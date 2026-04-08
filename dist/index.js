@@ -34085,6 +34085,7 @@
     warehouseMarkers = /* @__PURE__ */ new Map();
     selectedWarehouses = /* @__PURE__ */ new Set();
     activeService = "ground";
+    statsWereVisible = false;
     originMarker = null;
     destinationMarker = null;
     constructor() {
@@ -35160,15 +35161,21 @@
       if (!statsPanel) return;
       if (this.selectedWarehouses.size === 0) {
         statsPanel.style.display = "none";
+        this.statsWereVisible = false;
         return;
       }
       const selectedWhs = WAREHOUSES.filter((wh) => this.selectedWarehouses.has(wh.id));
       const stats = calculateNetworkStats(selectedWhs, this.activeService, this.zoneCalculator);
       if (!stats) {
         statsPanel.style.display = "none";
+        this.statsWereVisible = false;
         return;
       }
       statsPanel.style.display = "flex";
+      if (!this.statsWereVisible) {
+        this.statsWereVisible = true;
+        setTimeout(() => statsPanel.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120);
+      }
       const avgZoneEl = this.shadow.querySelector("#stat-avg-zone");
       const avgDaysEl = this.shadow.querySelector("#stat-avg-days");
       const savingsEl = this.shadow.querySelector("#stat-savings");

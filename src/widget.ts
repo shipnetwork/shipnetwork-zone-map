@@ -20,6 +20,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private warehouseMarkers: Map<string, WarehouseMarkerData> = new Map();
   private selectedWarehouses: Set<string> = new Set();
   private activeService: ServiceType = 'ground';
+  private statsWereVisible = false;
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -1163,6 +1164,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     if (this.selectedWarehouses.size === 0) {
       statsPanel.style.display = 'none';
+      this.statsWereVisible = false;
       return;
     }
 
@@ -1171,10 +1173,17 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     if (!stats) {
       statsPanel.style.display = 'none';
+      this.statsWereVisible = false;
       return;
     }
 
     statsPanel.style.display = 'flex';
+
+    // Scroll the stats panel into view the first time it appears
+    if (!this.statsWereVisible) {
+      this.statsWereVisible = true;
+      setTimeout(() => statsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+    }
 
     const avgZoneEl = this.shadow.querySelector('#stat-avg-zone');
     const avgDaysEl = this.shadow.querySelector('#stat-avg-days');
