@@ -19,7 +19,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
   private warehouseMarkers: Map<string, WarehouseMarkerData> = new Map();
   private selectedWarehouses: Set<string> = new Set();
-  private activeService: ServiceType | null = null;
+  private activeService: ServiceType = 'ground';
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -978,10 +978,10 @@ export class ShipNetworkZoneMap extends HTMLElement {
           pillContainer.querySelectorAll('.service-pill').forEach((p) => p.classList.remove('selected'));
 
           if (isAlreadyActive) {
-            // Toggle off — clear zones and hide stats
-            this.activeService = null;
-            this.clearZones();
-            this.updateStats();
+            // Toggle off — revert to default ground service
+            this.activeService = 'ground';
+            this.updateLegend();
+            this.updateWarehouseZones();
           } else {
             this.activeService = pill.dataset.service as ServiceType;
             pill.classList.add('selected');
@@ -1052,7 +1052,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private updateLegend() {
     const grid = this.shadow.querySelector('#zone-legend-grid');
     if (!grid) return;
-    const service = this.activeService ?? 'ground';
+    const service = this.activeService;
     const zones = this.zoneCalculator.getZoneRanges();
     grid.innerHTML = zones.map((z) => {
       const color = z.colors[service];
@@ -1069,7 +1069,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
     const statsPanel = this.shadow.querySelector('#stats-panel') as HTMLElement | null;
     if (!statsPanel) return;
 
-    if (this.selectedWarehouses.size === 0 || !this.activeService) {
+    if (this.selectedWarehouses.size === 0) {
       statsPanel.style.display = 'none';
       return;
     }
@@ -1285,7 +1285,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   private updateWarehouseZones() {
-    if (!this.staticMap || this.selectedWarehouses.size === 0 || !this.activeService) {
+    if (!this.staticMap || this.selectedWarehouses.size === 0) {
       this.clearZones();
       this.updateStats();
       return;
@@ -1318,7 +1318,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
         if (isFinite(minZone)) {
           // Use the per-service colour for this zone
-          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService ?? 'ground');
+          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
           zoneFeatures.push({
             zone: minZone,
             color,
