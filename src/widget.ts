@@ -1458,6 +1458,217 @@ export class ShipNetworkZoneMap extends HTMLElement {
     this.clearZones();
   }
 
+  /** Open a light-DOM modal containing the HubSpot lead-capture form */
+  private bannerShown = false;
+
+  private showUpsellBanner() {
+    // Only show once per session
+    if (this.bannerShown) return;
+    this.bannerShown = true;
+
+    // Inject styles once
+    if (!document.getElementById('sn-upsell-styles')) {
+      const style = document.createElement('style');
+      style.id = 'sn-upsell-styles';
+      style.textContent = `
+        #sn-upsell-banner {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          z-index: 99999;
+          background: #fff;
+          box-shadow: 0 -4px 30px rgba(5, 12, 50, 0.12);
+          border-top: 1px solid rgba(5, 12, 50, 0.08);
+          transform: translateY(100%);
+          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        #sn-upsell-banner.visible {
+          transform: translateY(0);
+        }
+        #sn-upsell-inner {
+          max-width: 960px;
+          margin: 0 auto;
+          padding: 20px 24px;
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          flex-wrap: wrap;
+          box-sizing: border-box;
+        }
+        #sn-upsell-text { flex: 1; min-width: 200px; }
+        #sn-upsell-headline {
+          font-size: 15px;
+          font-weight: 700;
+          color: #050C32;
+          margin: 0 0 4px;
+        }
+        #sn-upsell-sub {
+          font-size: 12px;
+          color: #6b7280;
+          margin: 0;
+          line-height: 1.5;
+        }
+        #sn-upsell-form {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        #sn-upsell-form input {
+          height: 40px;
+          border: 1px solid rgba(4, 12, 51, 0.18);
+          border-radius: 6px;
+          padding: 0 12px;
+          font-size: 13px;
+          font-family: 'Open Sans', sans-serif;
+          color: #050C32;
+          outline: none;
+          box-sizing: border-box;
+          width: 180px;
+        }
+        #sn-upsell-form input:focus {
+          border-color: #B7DEFF;
+        }
+        #sn-upsell-submit {
+          height: 40px;
+          padding: 0 20px;
+          background: #050C32;
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: 'Open Sans', sans-serif;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        #sn-upsell-submit:hover { background: #1a2a6c; }
+        #sn-upsell-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+        #sn-upsell-dismiss {
+          background: none;
+          border: none;
+          font-size: 12px;
+          color: #9ca3af;
+          cursor: pointer;
+          font-family: 'Open Sans', sans-serif;
+          padding: 0;
+          white-space: nowrap;
+          text-decoration: underline;
+        }
+        #sn-upsell-dismiss:hover { color: #050C32; }
+        #sn-upsell-close {
+          position: absolute;
+          top: 12px;
+          right: 16px;
+          background: none;
+          border: none;
+          font-size: 20px;
+          color: #9ca3af;
+          cursor: pointer;
+          line-height: 1;
+          padding: 2px 6px;
+        }
+        #sn-upsell-close:hover { color: #050C32; }
+        #sn-upsell-thanks {
+          font-size: 14px;
+          font-weight: 600;
+          color: #050C32;
+          padding: 4px 0;
+        }
+        @media (max-width: 600px) {
+          #sn-upsell-inner { flex-direction: column; align-items: flex-start; gap: 16px; }
+          #sn-upsell-form input { width: 100%; }
+          #sn-upsell-submit { width: 100%; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Build banner
+    const banner = document.createElement('div');
+    banner.id = 'sn-upsell-banner';
+
+    banner.innerHTML = `
+      <button id="sn-upsell-close" aria-label="Close">&times;</button>
+      <div id="sn-upsell-inner">
+        <div id="sn-upsell-text">
+          <p id="sn-upsell-headline">Your report is ready! Want a more accurate analysis?</p>
+          <p id="sn-upsell-sub">Our team will run a free custom analysis based on your actual order volume and destinations — takes about 15 minutes.</p>
+        </div>
+        <form id="sn-upsell-form" novalidate>
+          <input type="text"  name="firstname" placeholder="First name"  required autocomplete="given-name" />
+          <input type="email" name="email"     placeholder="Work email"  required autocomplete="email" />
+          <button type="submit" id="sn-upsell-submit">Get My Free Analysis</button>
+          <button type="button" id="sn-upsell-dismiss">No thanks</button>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(banner);
+
+    // Animate in after a short delay so the transition fires
+    requestAnimationFrame(() => requestAnimationFrame(() => banner.classList.add('visible')));
+
+    const slideOut = () => {
+      banner.classList.remove('visible');
+      banner.addEventListener('transitionend', () => banner.remove(), { once: true });
+    };
+
+    // Close button
+    banner.querySelector('#sn-upsell-close')!.addEventListener('click', slideOut);
+    // Dismiss link
+    banner.querySelector('#sn-upsell-dismiss')!.addEventListener('click', slideOut);
+    // Auto-dismiss after 30s
+    const autoTimer = setTimeout(slideOut, 30_000);
+
+    // Form submit → POST to HubSpot
+    const form = banner.querySelector('#sn-upsell-form') as HTMLFormElement;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearTimeout(autoTimer);
+
+      const firstnameInput = form.querySelector<HTMLInputElement>('[name="firstname"]')!;
+      const emailInput     = form.querySelector<HTMLInputElement>('[name="email"]')!;
+      const submitBtn      = form.querySelector<HTMLButtonElement>('#sn-upsell-submit')!;
+
+      if (!firstnameInput.value.trim() || !emailInput.value.trim()) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending…';
+
+      const PORTAL_ID = '8210927';
+      const FORM_ID   = 'd65468f8-4f8a-47ab-9464-58a2ce286048';
+
+      try {
+        await fetch(
+          `https://api.hsforms.com/submissions/v3/integration/submit/${PORTAL_ID}/${FORM_ID}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: [
+                { name: 'firstname', value: firstnameInput.value.trim() },
+                { name: 'email',     value: emailInput.value.trim() },
+              ],
+              context: {
+                pageUri: window.location.href,
+                pageName: document.title,
+              },
+            }),
+          }
+        );
+      } catch (_) {
+        // Silently ignore network errors — don't block the user
+      }
+
+      // Show thank-you then slide out
+      form.innerHTML = '<p id="sn-upsell-thanks">Thanks! A ShipNetwork rep will reach out shortly.</p>';
+      setTimeout(slideOut, 3000);
+    });
+  }
+
   private async generatePDF() {
     const btn = this.shadow.querySelector('#pdf-download-btn') as HTMLButtonElement | null;
     if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
@@ -1572,6 +1783,9 @@ export class ShipNetworkZoneMap extends HTMLElement {
       doc.text('ShipNetwork · Shipping Zone Analysis  |  Data is estimated and based on representative US ZIP destinations.', margin, pageH - 6);
 
       doc.save(`ShipNetwork-Zone-Analysis-${serviceDef.label}-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+      // Show upsell banner after PDF starts downloading
+      this.showUpsellBanner();
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Download Report'; }
     }
