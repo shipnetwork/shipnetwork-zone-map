@@ -2,7 +2,7 @@ import { BottomSheet, BottomSheetState } from './mobile-ui';
 import { DeviceType, ResponsiveManager } from './responsive';
 import { WAREHOUSES } from './warehouses';
 import { ZoneCalculator, SERVICES, type ServiceType } from './zone-calculator';
-import { StaticUSMap, type ZoneFeature } from './static-map';
+import { StaticUSMap, type ZoneFeature, type GridZoneEntry } from './static-map';
 import { calculateNetworkStats, type NetworkStats } from './stats-calculator';
 
 interface WarehouseMarkerData {
@@ -22,6 +22,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private activeService: ServiceType = 'ground';
   private statsWereVisible = false;
   private zoneCache: Map<string, ZoneFeature[]> = new Map();
+  private gridZoneCache: Map<string, GridZoneEntry[]> = new Map();
 
   // Pre-computed zone numbers per warehouse — built once at startup
   private warehouseZoneLookup: Map<string, Uint8Array> = new Map();
@@ -966,6 +967,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
     this.createWarehouseMarkers();
     this.createUI();
     this.precomputeWarehouseZones();
+    this.staticMap.precomputeGrid(24, 50, -125, -66, this.GRID_SIZE);
     this.initTooltip(mapContainer);
 
     // Dispatch ready event
@@ -1417,8 +1419,16 @@ export class ShipNetworkZoneMap extends HTMLElement {
       return;
     }
 
-    // Return cached result if this warehouse+service combo was already computed
     const cacheKey = [...this.selectedWarehouses].sort().join(',') + '|' + this.activeService;
+
+    // Fast cached path — grid-based (no trig, no allocations)
+    if (this.gridZoneCache.has(cacheKey)) {
+      this.staticMap.drawZonesFromGrid(this.gridZoneCache.get(cacheKey)!);
+      this.updateStats();
+      return;
+    }
+
+    // Legacy cache fallback (for entries built before grid was ready)
     if (this.zoneCache.has(cacheKey)) {
       this.staticMap.drawZones(this.zoneCache.get(cacheKey)!);
       this.updateStats();
@@ -1427,34 +1437,23 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     const selectedIds = [...this.selectedWarehouses];
 
-    // Fast path: use pre-computed lookup arrays — no haversine calls at selection time
+    // Fast path: pre-computed lookup + grid pixel renderer
     if (this.warehouseZoneLookup.size > 0) {
-      const zoneFeatures: ZoneFeature[] = [];
-      let i = 0;
-      for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
-        for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
-          let minZone = 8;
-          for (const id of selectedIds) {
-            const z = this.warehouseZoneLookup.get(id)?.[i] ?? 8;
-            if (z < minZone) minZone = z;
-          }
-          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
-          zoneFeatures.push({
-            zone: minZone,
-            color,
-            coordinates: [[
-              [lng, lat],
-              [lng + this.GRID_SIZE, lat],
-              [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
-              [lng, lat + this.GRID_SIZE],
-              [lng, lat],
-            ]],
-          });
-          i++;
+      const entries: GridZoneEntry[] = [];
+      const totalCells = this.GRID_LAT_STEPS * this.GRID_LNG_STEPS;
+      for (let i = 0; i < totalCells; i++) {
+        let minZone = 8;
+        for (const id of selectedIds) {
+          const z = this.warehouseZoneLookup.get(id)?.[i] ?? 8;
+          if (z < minZone) minZone = z;
         }
+        entries.push({
+          color: this.zoneCalculator.getZoneColor(minZone, this.activeService),
+          gridIndex: i,
+        });
       }
-      this.zoneCache.set(cacheKey, zoneFeatures);
-      this.staticMap.drawZones(zoneFeatures);
+      this.gridZoneCache.set(cacheKey, entries);
+      this.staticMap.drawZonesFromGrid(entries);
       this.updateStats();
       return;
     }

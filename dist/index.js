@@ -33736,6 +33736,9 @@
     scale = 1;
     offsetX = 0;
     offsetY = 0;
+    // Pre-computed pixel positions for every grid cell (x, y, w, h per cell)
+    gridPixels = null;
+    gridCellCount = 0;
     // Geographic bounds matching the SVG map extent
     bounds = {
       sw: { lng: -124.7, lat: 24.5 },
@@ -33852,6 +33855,57 @@
           this.ctx.closePath();
           this.ctx.fill();
         });
+      });
+      this.ctx.restore();
+      this.ctx.globalAlpha = 1;
+    }
+    /** Pre-compute pixel x, y, w, h for every grid cell so drawZonesFromGrid needs no trig. */
+    precomputeGrid(latStart, latEnd, lngStart, lngEnd, step) {
+      const latSteps = Math.ceil((latEnd - latStart) / step) + 1;
+      const lngSteps = Math.ceil((lngEnd - lngStart) / step) + 1;
+      this.gridCellCount = latSteps * lngSteps;
+      this.gridPixels = new Float32Array(this.gridCellCount * 4);
+      let idx = 0;
+      for (let lat = latStart; lat <= latEnd; lat += step) {
+        for (let lng = lngStart; lng <= lngEnd; lng += step) {
+          const topLeft = this.project(lng, lat + step);
+          const bottomRight = this.project(lng + step, lat);
+          const x2 = topLeft.x;
+          const y3 = topLeft.y;
+          const w2 = bottomRight.x - topLeft.x;
+          const h3 = bottomRight.y - topLeft.y;
+          this.gridPixels[idx++] = x2;
+          this.gridPixels[idx++] = y3;
+          this.gridPixels[idx++] = w2;
+          this.gridPixels[idx++] = h3;
+        }
+      }
+    }
+    /** Fast zone renderer — uses pre-computed pixel grid, batches draws by color. */
+    drawZonesFromGrid(entries2) {
+      if (!this.gridPixels) return;
+      this.ctx.clearRect(0, 0, SVG_WIDTH, SVG_HEIGHT);
+      const byColor = /* @__PURE__ */ new Map();
+      for (const e2 of entries2) {
+        let list = byColor.get(e2.color);
+        if (!list) {
+          list = [];
+          byColor.set(e2.color, list);
+        }
+        list.push(e2.gridIndex);
+      }
+      this.ctx.save();
+      this.ctx.clip(this.usClipPath);
+      this.ctx.globalAlpha = 0.55;
+      const px = this.gridPixels;
+      byColor.forEach((indices, color) => {
+        this.ctx.fillStyle = color;
+        this.ctx.beginPath();
+        for (const gi of indices) {
+          const off = gi * 4;
+          this.ctx.rect(px[off], px[off + 1], px[off + 2], px[off + 3]);
+        }
+        this.ctx.fill();
       });
       this.ctx.restore();
       this.ctx.globalAlpha = 1;
@@ -34087,6 +34141,7 @@
     activeService = "ground";
     statsWereVisible = false;
     zoneCache = /* @__PURE__ */ new Map();
+    gridZoneCache = /* @__PURE__ */ new Map();
     // Pre-computed zone numbers per warehouse — built once at startup
     warehouseZoneLookup = /* @__PURE__ */ new Map();
     GRID_SIZE = 0.5;
@@ -35005,6 +35060,7 @@
       this.createWarehouseMarkers();
       this.createUI();
       this.precomputeWarehouseZones();
+      this.staticMap.precomputeGrid(24, 50, -125, -66, this.GRID_SIZE);
       this.initTooltip(mapContainer);
       this.dispatchEvent(new CustomEvent("map-ready", {
         detail: { map: this.staticMap },
@@ -35370,6 +35426,11 @@
         return;
       }
       const cacheKey = [...this.selectedWarehouses].sort().join(",") + "|" + this.activeService;
+      if (this.gridZoneCache.has(cacheKey)) {
+        this.staticMap.drawZonesFromGrid(this.gridZoneCache.get(cacheKey));
+        this.updateStats();
+        return;
+      }
       if (this.zoneCache.has(cacheKey)) {
         this.staticMap.drawZones(this.zoneCache.get(cacheKey));
         this.updateStats();
@@ -35377,32 +35438,21 @@
       }
       const selectedIds = [...this.selectedWarehouses];
       if (this.warehouseZoneLookup.size > 0) {
-        const zoneFeatures2 = [];
-        let i3 = 0;
-        for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
-          for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
-            let minZone = 8;
-            for (const id of selectedIds) {
-              const z2 = this.warehouseZoneLookup.get(id)?.[i3] ?? 8;
-              if (z2 < minZone) minZone = z2;
-            }
-            const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
-            zoneFeatures2.push({
-              zone: minZone,
-              color,
-              coordinates: [[
-                [lng, lat],
-                [lng + this.GRID_SIZE, lat],
-                [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
-                [lng, lat + this.GRID_SIZE],
-                [lng, lat]
-              ]]
-            });
-            i3++;
+        const entries2 = [];
+        const totalCells = this.GRID_LAT_STEPS * this.GRID_LNG_STEPS;
+        for (let i3 = 0; i3 < totalCells; i3++) {
+          let minZone = 8;
+          for (const id of selectedIds) {
+            const z2 = this.warehouseZoneLookup.get(id)?.[i3] ?? 8;
+            if (z2 < minZone) minZone = z2;
           }
+          entries2.push({
+            color: this.zoneCalculator.getZoneColor(minZone, this.activeService),
+            gridIndex: i3
+          });
         }
-        this.zoneCache.set(cacheKey, zoneFeatures2);
-        this.staticMap.drawZones(zoneFeatures2);
+        this.gridZoneCache.set(cacheKey, entries2);
+        this.staticMap.drawZonesFromGrid(entries2);
         this.updateStats();
         return;
       }

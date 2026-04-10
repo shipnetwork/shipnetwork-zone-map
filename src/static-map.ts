@@ -69,6 +69,11 @@ export interface ZoneFeature {
   coordinates: number[][][];
 }
 
+export interface GridZoneEntry {
+  color: string;
+  gridIndex: number;
+}
+
 export interface ProjectedPoint {
   x: number;
   y: number;
@@ -83,6 +88,10 @@ export class StaticUSMap {
   private scale: number = 1;
   private offsetX: number = 0;
   private offsetY: number = 0;
+
+  // Pre-computed pixel positions for every grid cell (x, y, w, h per cell)
+  private gridPixels: Float32Array | null = null;
+  private gridCellCount: number = 0;
 
   // Geographic bounds matching the SVG map extent
   private readonly bounds = {
@@ -224,6 +233,61 @@ export class StaticUSMap {
         this.ctx.closePath();
         this.ctx.fill();
       });
+    });
+
+    this.ctx.restore();
+    this.ctx.globalAlpha = 1.0;
+  }
+
+  /** Pre-compute pixel x, y, w, h for every grid cell so drawZonesFromGrid needs no trig. */
+  public precomputeGrid(latStart: number, latEnd: number, lngStart: number, lngEnd: number, step: number) {
+    const latSteps = Math.ceil((latEnd - latStart) / step) + 1;
+    const lngSteps = Math.ceil((lngEnd - lngStart) / step) + 1;
+    this.gridCellCount = latSteps * lngSteps;
+    this.gridPixels = new Float32Array(this.gridCellCount * 4);
+
+    let idx = 0;
+    for (let lat = latStart; lat <= latEnd; lat += step) {
+      for (let lng = lngStart; lng <= lngEnd; lng += step) {
+        const topLeft = this.project(lng, lat + step);
+        const bottomRight = this.project(lng + step, lat);
+        const x = topLeft.x;
+        const y = topLeft.y;
+        const w = bottomRight.x - topLeft.x;
+        const h = bottomRight.y - topLeft.y;
+        this.gridPixels[idx++] = x;
+        this.gridPixels[idx++] = y;
+        this.gridPixels[idx++] = w;
+        this.gridPixels[idx++] = h;
+      }
+    }
+  }
+
+  /** Fast zone renderer — uses pre-computed pixel grid, batches draws by color. */
+  public drawZonesFromGrid(entries: GridZoneEntry[]) {
+    if (!this.gridPixels) return;
+    this.ctx.clearRect(0, 0, SVG_WIDTH, SVG_HEIGHT);
+
+    const byColor = new Map<string, number[]>();
+    for (const e of entries) {
+      let list = byColor.get(e.color);
+      if (!list) { list = []; byColor.set(e.color, list); }
+      list.push(e.gridIndex);
+    }
+
+    this.ctx.save();
+    this.ctx.clip(this.usClipPath);
+    this.ctx.globalAlpha = 0.55;
+
+    const px = this.gridPixels;
+    byColor.forEach((indices, color) => {
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      for (const gi of indices) {
+        const off = gi * 4;
+        this.ctx.rect(px[off], px[off + 1], px[off + 2], px[off + 3]);
+      }
+      this.ctx.fill();
     });
 
     this.ctx.restore();
