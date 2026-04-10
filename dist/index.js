@@ -34086,6 +34086,14 @@
     selectedWarehouses = /* @__PURE__ */ new Set();
     activeService = "ground";
     statsWereVisible = false;
+    zoneCache = /* @__PURE__ */ new Map();
+    // Pre-computed zone numbers per warehouse — built once at startup
+    warehouseZoneLookup = /* @__PURE__ */ new Map();
+    GRID_SIZE = 0.5;
+    GRID_LAT_STEPS = Math.ceil((50 - 24) / 0.5) + 1;
+    // 53
+    GRID_LNG_STEPS = Math.ceil((-66 - -125) / 0.5) + 1;
+    // 119
     originMarker = null;
     destinationMarker = null;
     constructor() {
@@ -34996,6 +35004,7 @@
       resizeObserver.observe(mapContainer);
       this.createWarehouseMarkers();
       this.createUI();
+      this.precomputeWarehouseZones();
       this.initTooltip(mapContainer);
       this.dispatchEvent(new CustomEvent("map-ready", {
         detail: { map: this.staticMap },
@@ -35335,32 +35344,80 @@
         }
       });
     }
+    /** Run once at startup — stores zone numbers per grid cell per warehouse in a Uint8Array */
+    precomputeWarehouseZones() {
+      WAREHOUSES.forEach((wh) => {
+        const zones = new Uint8Array(this.GRID_LAT_STEPS * this.GRID_LNG_STEPS);
+        let i3 = 0;
+        for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+          for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
+            const dist = this.zoneCalculator.calculateDistance(
+              wh.coordinates[1],
+              wh.coordinates[0],
+              lat,
+              lng
+            );
+            zones[i3++] = this.zoneCalculator.calculateZone(dist).zoneNumber;
+          }
+        }
+        this.warehouseZoneLookup.set(wh.id, zones);
+      });
+    }
     updateWarehouseZones() {
       if (!this.staticMap || this.selectedWarehouses.size === 0) {
         this.clearZones();
         this.updateStats();
         return;
       }
-      const selectedCoords = [];
-      this.selectedWarehouses.forEach((warehouseId) => {
-        const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
-        if (warehouse) {
-          selectedCoords.push(warehouse.coordinates);
+      const cacheKey = [...this.selectedWarehouses].sort().join(",") + "|" + this.activeService;
+      if (this.zoneCache.has(cacheKey)) {
+        this.staticMap.drawZones(this.zoneCache.get(cacheKey));
+        this.updateStats();
+        return;
+      }
+      const selectedIds = [...this.selectedWarehouses];
+      if (this.warehouseZoneLookup.size > 0) {
+        const zoneFeatures2 = [];
+        let i3 = 0;
+        for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+          for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
+            let minZone = 8;
+            for (const id of selectedIds) {
+              const z2 = this.warehouseZoneLookup.get(id)?.[i3] ?? 8;
+              if (z2 < minZone) minZone = z2;
+            }
+            const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
+            zoneFeatures2.push({
+              zone: minZone,
+              color,
+              coordinates: [[
+                [lng, lat],
+                [lng + this.GRID_SIZE, lat],
+                [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
+                [lng, lat + this.GRID_SIZE],
+                [lng, lat]
+              ]]
+            });
+            i3++;
+          }
         }
+        this.zoneCache.set(cacheKey, zoneFeatures2);
+        this.staticMap.drawZones(zoneFeatures2);
+        this.updateStats();
+        return;
+      }
+      const selectedCoords = [];
+      selectedIds.forEach((warehouseId) => {
+        const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
+        if (warehouse) selectedCoords.push(warehouse.coordinates);
       });
       if (selectedCoords.length === 0) return;
       const zoneFeatures = [];
-      const gridSize = 0.3;
-      for (let lat = 24; lat <= 50; lat += gridSize) {
-        for (let lng = -125; lng <= -66; lng += gridSize) {
+      for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+        for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
           let minZone = Infinity;
           selectedCoords.forEach((coord) => {
-            const distance = this.zoneCalculator.calculateDistance(
-              coord[1],
-              coord[0],
-              lat,
-              lng
-            );
+            const distance = this.zoneCalculator.calculateDistance(coord[1], coord[0], lat, lng);
             const zone = this.zoneCalculator.calculateZone(distance);
             minZone = Math.min(minZone, zone.zoneNumber);
           });
@@ -35371,15 +35428,16 @@
               color,
               coordinates: [[
                 [lng, lat],
-                [lng + gridSize, lat],
-                [lng + gridSize, lat + gridSize],
-                [lng, lat + gridSize],
+                [lng + this.GRID_SIZE, lat],
+                [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
+                [lng, lat + this.GRID_SIZE],
                 [lng, lat]
               ]]
             });
           }
         }
       }
+      this.zoneCache.set(cacheKey, zoneFeatures);
       this.staticMap.drawZones(zoneFeatures);
       this.updateStats();
     }

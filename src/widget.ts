@@ -21,6 +21,13 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private selectedWarehouses: Set<string> = new Set();
   private activeService: ServiceType = 'ground';
   private statsWereVisible = false;
+  private zoneCache: Map<string, ZoneFeature[]> = new Map();
+
+  // Pre-computed zone numbers per warehouse — built once at startup
+  private warehouseZoneLookup: Map<string, Uint8Array> = new Map();
+  private readonly GRID_SIZE = 0.5;
+  private readonly GRID_LAT_STEPS = Math.ceil((50 - 24) / 0.5) + 1;   // 53
+  private readonly GRID_LNG_STEPS = Math.ceil((-66 - -125) / 0.5) + 1; // 119
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
@@ -958,6 +965,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
     // Create UI and markers
     this.createWarehouseMarkers();
     this.createUI();
+    this.precomputeWarehouseZones();
     this.initTooltip(mapContainer);
 
     // Dispatch ready event
@@ -1385,6 +1393,23 @@ export class ShipNetworkZoneMap extends HTMLElement {
     });
   }
 
+  /** Run once at startup — stores zone numbers per grid cell per warehouse in a Uint8Array */
+  private precomputeWarehouseZones() {
+    WAREHOUSES.forEach((wh) => {
+      const zones = new Uint8Array(this.GRID_LAT_STEPS * this.GRID_LNG_STEPS);
+      let i = 0;
+      for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+        for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
+          const dist = this.zoneCalculator.calculateDistance(
+            wh.coordinates[1], wh.coordinates[0], lat, lng
+          );
+          zones[i++] = this.zoneCalculator.calculateZone(dist).zoneNumber;
+        }
+      }
+      this.warehouseZoneLookup.set(wh.id, zones);
+    });
+  }
+
   private updateWarehouseZones() {
     if (!this.staticMap || this.selectedWarehouses.size === 0) {
       this.clearZones();
@@ -1392,49 +1417,82 @@ export class ShipNetworkZoneMap extends HTMLElement {
       return;
     }
 
-    const selectedCoords: [number, number][] = [];
-    this.selectedWarehouses.forEach((warehouseId) => {
-      const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
-      if (warehouse) {
-        selectedCoords.push(warehouse.coordinates);
-      }
-    });
+    // Return cached result if this warehouse+service combo was already computed
+    const cacheKey = [...this.selectedWarehouses].sort().join(',') + '|' + this.activeService;
+    if (this.zoneCache.has(cacheKey)) {
+      this.staticMap.drawZones(this.zoneCache.get(cacheKey)!);
+      this.updateStats();
+      return;
+    }
 
-    if (selectedCoords.length === 0) return;
+    const selectedIds = [...this.selectedWarehouses];
 
-    const zoneFeatures: ZoneFeature[] = [];
-    const gridSize = 0.3;
-
-    for (let lat = 24; lat <= 50; lat += gridSize) {
-      for (let lng = -125; lng <= -66; lng += gridSize) {
-        let minZone = Infinity;
-
-        selectedCoords.forEach((coord) => {
-          const distance = this.zoneCalculator.calculateDistance(
-            coord[1], coord[0], lat, lng
-          );
-          const zone = this.zoneCalculator.calculateZone(distance);
-          minZone = Math.min(minZone, zone.zoneNumber);
-        });
-
-        if (isFinite(minZone)) {
-          // Use the per-service colour for this zone
+    // Fast path: use pre-computed lookup arrays — no haversine calls at selection time
+    if (this.warehouseZoneLookup.size > 0) {
+      const zoneFeatures: ZoneFeature[] = [];
+      let i = 0;
+      for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+        for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
+          let minZone = 8;
+          for (const id of selectedIds) {
+            const z = this.warehouseZoneLookup.get(id)?.[i] ?? 8;
+            if (z < minZone) minZone = z;
+          }
           const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
           zoneFeatures.push({
             zone: minZone,
             color,
             coordinates: [[
               [lng, lat],
-              [lng + gridSize, lat],
-              [lng + gridSize, lat + gridSize],
-              [lng, lat + gridSize],
+              [lng + this.GRID_SIZE, lat],
+              [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
+              [lng, lat + this.GRID_SIZE],
+              [lng, lat],
+            ]],
+          });
+          i++;
+        }
+      }
+      this.zoneCache.set(cacheKey, zoneFeatures);
+      this.staticMap.drawZones(zoneFeatures);
+      this.updateStats();
+      return;
+    }
+
+    // Fallback: lookup not ready yet — compute on the fly (same as original)
+    const selectedCoords: [number, number][] = [];
+    selectedIds.forEach((warehouseId) => {
+      const warehouse = WAREHOUSES.find((wh) => wh.id === warehouseId);
+      if (warehouse) selectedCoords.push(warehouse.coordinates);
+    });
+    if (selectedCoords.length === 0) return;
+
+    const zoneFeatures: ZoneFeature[] = [];
+    for (let lat = 24; lat <= 50; lat += this.GRID_SIZE) {
+      for (let lng = -125; lng <= -66; lng += this.GRID_SIZE) {
+        let minZone = Infinity;
+        selectedCoords.forEach((coord) => {
+          const distance = this.zoneCalculator.calculateDistance(coord[1], coord[0], lat, lng);
+          const zone = this.zoneCalculator.calculateZone(distance);
+          minZone = Math.min(minZone, zone.zoneNumber);
+        });
+        if (isFinite(minZone)) {
+          const color = this.zoneCalculator.getZoneColor(minZone, this.activeService);
+          zoneFeatures.push({
+            zone: minZone,
+            color,
+            coordinates: [[
+              [lng, lat],
+              [lng + this.GRID_SIZE, lat],
+              [lng + this.GRID_SIZE, lat + this.GRID_SIZE],
+              [lng, lat + this.GRID_SIZE],
               [lng, lat],
             ]],
           });
         }
       }
     }
-
+    this.zoneCache.set(cacheKey, zoneFeatures);
     this.staticMap.drawZones(zoneFeatures);
     this.updateStats();
   }
