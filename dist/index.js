@@ -307,6 +307,8 @@ end`};e.events.push(["putFont",function(i){(function(s){var a=s.font,o=s.out,c=s
         margin: 0 auto;
         font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         background: transparent;
+        container-type: inline-size;
+        container-name: hero-widget;
       }
 
       .hero-card {
@@ -314,6 +316,7 @@ end`};e.events.push(["putFont",function(i){(function(s){var a=s.font,o=s.out,c=s
         flex-direction: column;
         gap: 12px;
         width: 100%;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
       }
 
       .hero-map-section {
@@ -566,6 +569,121 @@ end`};e.events.push(["putFont",function(i){(function(s){var a=s.font,o=s.out,c=s
       .hero-cta:hover {
         background: #1a2550;
         box-shadow: 0 4px 12px rgba(5, 12, 50, 0.25);
+      }
+
+      .hero-cta:active {
+        background: #152042;
+        transform: scale(0.99);
+      }
+
+      /* \u2500\u2500 Responsive: narrow embed / phones (container = widget width) \u2500\u2500 */
+      @container hero-widget (max-width: 420px) {
+        .hero-map-section {
+          width: 100%;
+        }
+
+        .hero-sidebar-title {
+          font-size: 13px;
+        }
+
+        .hero-buttons-subtext {
+          font-size: 10px;
+        }
+
+        .hero-location-buttons {
+          gap: 6px 6px;
+        }
+
+        .hero-stats-grid {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+
+        .hero-stat-cell {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: baseline;
+          justify-content: space-between;
+          text-align: left;
+          gap: 6px 12px;
+        }
+
+        .hero-stat-label {
+          flex: 1 1 40%;
+          text-align: left;
+        }
+
+        .hero-stat-value {
+          flex: 0 0 auto;
+          text-align: right;
+        }
+
+        .hero-stat-hint {
+          flex: 1 1 100%;
+          max-width: none;
+          text-align: left;
+          margin-top: 2px;
+        }
+
+        .hero-stats-heading {
+          text-align: left;
+        }
+
+        .hero-stats-panel {
+          padding: 12px 14px 14px;
+        }
+      }
+
+      @container hero-widget (max-width: 340px) {
+        .hero-location-buttons {
+          gap: 5px 4px;
+        }
+
+        .location-button {
+          font-size: 10px;
+          padding: 0 4px;
+        }
+
+        .hero-stat-value {
+          font-size: 12px;
+        }
+
+        .hero-stat-label {
+          font-size: 8px;
+        }
+      }
+
+      /* Touch devices: minimum tap targets (~44px), reduce accidental zoom delay */
+      @media (hover: none) and (pointer: coarse) {
+        .hero-location-buttons .location-button {
+          min-height: 44px;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+        }
+
+        .hero-cta {
+          min-height: 48px;
+          padding: 14px 18px;
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+        }
+
+        .hero-cta:active {
+          transform: none;
+        }
+      }
+
+      /* Fallback when container queries unsupported: viewport-based tighten */
+      @supports not (container-type: inline-size) {
+        @media (max-width: 420px) {
+          .hero-map-section {
+            width: 100%;
+          }
+
+          .hero-stats-grid {
+            grid-template-columns: 1fr;
+          }
+        }
       }
     `}attachZoneSyncListener(){this.zoneSyncListener||(this.zoneSyncListener=t=>{let n=t.detail;!n||n.sourceId===this.instanceId||(Array.isArray(n.warehouses)&&(this.selectedWarehouses=new Set(n.warehouses)),n.service&&(n.service==="ground"||n.service==="priority"||n.service==="expedited")&&(this.activeService=n.service),this.syncServicePillUI(),this.updateLegend(),this.updateButtonStates(),this.updateWarehouseZones())},document.addEventListener("sn-zone-sync",this.zoneSyncListener))}detachZoneSyncListener(){this.zoneSyncListener&&(document.removeEventListener("sn-zone-sync",this.zoneSyncListener),this.zoneSyncListener=null)}dispatchSyncEvent(){document.dispatchEvent(new CustomEvent("sn-zone-sync",{bubbles:!0,detail:{sourceId:this.instanceId,warehouses:[...this.selectedWarehouses],service:this.activeService}}))}syncServicePillUI(){let t=this.shadow.querySelector("#service-toggle-pills");t&&t.querySelectorAll(".service-pill").forEach(r=>{let n=r.dataset.service;r.classList.toggle("selected",n===this.activeService)})}updateButtonStates(){this.shadow.querySelectorAll(".location-button").forEach(t=>{let r=t.dataset.warehouseId;r&&t.classList.toggle("selected",this.selectedWarehouses.has(r))}),ca.forEach(t=>{this.updateWarehouseMarkerAppearance(t.id,this.selectedWarehouses.has(t.id))})}getStyles(){return`
       @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@600;700&display=swap');
