@@ -27,6 +27,77 @@
             margin: 0 auto;
             padding: 20px;
         }
+
+        /* Mock Webflow hero row: 1250px total, 760px copy + 40px gap + 450px widget */
+        .hero-mock-section {
+            display: grid;
+            grid-template-columns: 760px 450px;
+            gap: 40px;
+            align-items: start;
+            justify-content: center;
+            max-width: 1250px;
+            margin: 0 auto 40px auto;
+            padding: 32px 24px;
+            background: linear-gradient(145deg, #0a1228 0%, #0d1838 50%, #0a1629 100%);
+            border-radius: 16px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+        }
+
+        .hero-mock-copy {
+            color: #e8eef8;
+            padding-top: 8px;
+        }
+
+        .hero-mock-copy h2 {
+            font-size: clamp(28px, 3vw, 40px);
+            font-weight: 700;
+            line-height: 1.15;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero-mock-copy .accent {
+            color: #7eb8e8;
+        }
+
+        .hero-mock-copy p {
+            font-size: 17px;
+            line-height: 1.55;
+            opacity: 0.92;
+            margin-bottom: 24px;
+            max-width: 520px;
+        }
+
+        .hero-mock-cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 22px;
+            background: linear-gradient(90deg, #206196, #5eb3ff);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .hero-widget-slot {
+            width: 450px;
+            max-width: 100%;
+            min-height: 400px;
+        }
+
+        @media (max-width: 1280px) {
+            .hero-mock-section {
+                grid-template-columns: 1fr;
+                max-width: 100%;
+            }
+            .hero-widget-slot {
+                width: 100%;
+                justify-self: center;
+            }
+        }
         
         .demo-header {
             background: white;
@@ -201,6 +272,20 @@
                 Works seamlessly on mobile, tablet, and desktop devices.
             </p>
         </div>
+
+        <section class="hero-mock-section" aria-label="Hero mockup">
+            <div class="hero-mock-copy">
+                <h2>Warehouses That <span class="accent">Reach 98%</span> of the U.S. Accurately.</h2>
+                <p>
+                    Orders move faster when warehousing, fulfillment, and shipping work together through one connected logistics network.
+                    Select warehouses on the right — then scroll down to see the same selections on the full zone map.
+                </p>
+                <button type="button" class="hero-mock-cta">Ship Nationwide Faster ↗</button>
+            </div>
+            <div class="hero-widget-slot">
+                <shipnetwork-zone-map mode="hero" style="width: 450px; max-width: 100%;"></shipnetwork-zone-map>
+            </div>
+        </section>
         
         <div class="demo-controls">
             <h3>📱 Test Responsive Sizes:</h3>
@@ -219,9 +304,9 @@
         </div>
         
         <div id="widget-container" class="widget-wrapper container-1319">
-            <!-- Widget will be inserted here -->
+            <!-- Full widget — stays in sync with hero widget via sn-zone-sync -->
             <shipnetwork-zone-map 
-                id="zone-map"
+                id="full-zone-map"
                 style="width: 100%;">
             </shipnetwork-zone-map>
         </div>
@@ -308,7 +393,7 @@
         }
         
         // Listen for widget events
-        const widget = document.getElementById('zone-map');
+        const widget = document.getElementById('full-zone-map');
         
         widget.addEventListener('map-ready', (e) => {
             console.log('✅ Map is ready!', e.detail);

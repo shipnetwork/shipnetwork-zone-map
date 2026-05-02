@@ -32,6 +32,10 @@ export class ShipNetworkZoneMap extends HTMLElement {
   private originMarker: SVGCircleElement | null = null;
   private destinationMarker: SVGCircleElement | null = null;
 
+  /** Unique id per instance — prevents sync echo loops between hero + full widgets */
+  private readonly instanceId = Math.random().toString(36).slice(2);
+  private zoneSyncListener: ((e: Event) => void) | null = null;
+
   constructor() {
     super();
     this.shadow = this.attachShadow({ mode: 'open' });
@@ -39,7 +43,11 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['mapbox-token', 'initial-warehouses', 'theme', 'mobile-breakpoint'];
+    return ['mapbox-token', 'initial-warehouses', 'theme', 'mobile-breakpoint', 'mode'];
+  }
+
+  private isHeroMode(): boolean {
+    return this.getAttribute('mode') === 'hero';
   }
 
   connectedCallback() {
@@ -48,10 +56,12 @@ export class ShipNetworkZoneMap extends HTMLElement {
     this.style.height = 'auto';
     this.style.display = 'block';
     this.render();
-    this.initializeMap();
+    this.attachZoneSyncListener();
+    void this.initializeMap();
   }
 
   disconnectedCallback() {
+    this.detachZoneSyncListener();
     if (this.staticMap) {
       this.staticMap.destroy();
     }
@@ -64,14 +74,22 @@ export class ShipNetworkZoneMap extends HTMLElement {
   }
 
   private render() {
-    // Create styles
     const style = document.createElement('style');
-    style.textContent = this.getStyles();
+    style.textContent = this.isHeroMode() ? this.getHeroStyles() : this.getStyles();
 
-    // Create container
     this.container = document.createElement('div');
-    this.container.className = 'widget-container';
-    this.container.innerHTML = `
+    this.container.className = this.isHeroMode()
+      ? 'widget-container hero-widget-container'
+      : 'widget-container';
+    this.container.innerHTML = this.isHeroMode() ? this.getHeroTemplate() : this.getFullTemplate();
+
+    this.shadow.appendChild(style);
+    this.shadow.appendChild(this.container);
+  }
+
+  /** Full-width zone map layout (default when mode is absent or not "hero") */
+  private getFullTemplate(): string {
+    return `
       <div class="main-grid">
         <aside class="locations-sidebar">
           <h2 class="sidebar-title">Our Warehouse Locations</h2>
@@ -128,9 +146,401 @@ export class ShipNetworkZoneMap extends HTMLElement {
         </div>
       </footer>
     `;
+  }
 
-    this.shadow.appendChild(style);
-    this.shadow.appendChild(this.container);
+  /** Compact card for hero columns (~450px wide) — map, warehouse buttons, stats, CTA */
+  private getHeroTemplate(): string {
+    return `
+      <div class="hero-card">
+        <div class="hero-map-section">
+          <div id="map-container"></div>
+          <div id="zone-tooltip" class="zone-tooltip" aria-hidden="true"></div>
+        </div>
+        <div class="hero-buttons-header">
+          <h2 class="hero-sidebar-title">Our warehouses</h2>
+          <p class="hero-buttons-subtext">Select state codes to choose which fulfillment centers to include. Colors on the map show blended USPS-style zones.</p>
+        </div>
+        <div class="location-buttons-grid hero-location-buttons" id="location-buttons-grid"></div>
+        <div class="stats-panel hero-stats-panel" id="stats-panel" style="display:none;">
+          <p class="hero-stats-heading">Network preview</p>
+          <div class="hero-stats-grid">
+            <div class="hero-stat-cell">
+              <span class="hero-stat-label">Avg shipping zone</span>
+              <span class="hero-stat-value" id="stat-avg-zone">—</span>
+              <span class="hero-stat-hint">Lower is closer / faster</span>
+            </div>
+            <div class="hero-stat-cell">
+              <span class="hero-stat-label">Avg days in transit</span>
+              <span class="hero-stat-value" id="stat-avg-days">—</span>
+              <span class="hero-stat-hint">Sample US destinations</span>
+            </div>
+            <div class="hero-stat-cell hero-stat-cell-highlight">
+              <span class="hero-stat-label">Est. savings vs. one DC</span>
+              <span class="hero-stat-value hero-stat-savings" id="stat-savings">—</span>
+              <span class="hero-stat-hint">Multi-node network benefit</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="hero-cta" id="hero-explore-cta">
+          Explore Full Zone Map ↓
+        </button>
+      </div>
+    `;
+  }
+
+  private getHeroStyles(): string {
+    return `
+      @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@600;700&display=swap');
+
+      :host {
+        display: block;
+        width: 100%;
+        max-width: 450px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      .hero-widget-container {
+        width: 100%;
+        max-width: 450px;
+        margin: 0 auto;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: transparent;
+      }
+
+      .hero-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+      }
+
+      .hero-map-section {
+        position: relative;
+        width: 94%;
+        margin: 0 auto;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 24px rgba(5, 12, 50, 0.12);
+      }
+
+      #map-container {
+        width: 100%;
+        aspect-ratio: 858 / 560;
+        position: relative;
+        overflow: hidden;
+        background: transparent;
+        display: block;
+      }
+
+      .zone-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(5, 12, 50, 0.88);
+        color: #fff;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 5px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+        z-index: 20;
+        transform: translate(10px, -50%);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      }
+
+      .zone-tooltip.visible {
+        opacity: 1;
+      }
+
+      .hero-buttons-header {
+        margin-top: 2px;
+      }
+
+      .hero-sidebar-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #ffffff;
+        margin: 0;
+        text-align: left;
+        letter-spacing: -0.2px;
+      }
+
+      .hero-buttons-subtext {
+        font-size: 11px;
+        line-height: 1.45;
+        color: rgba(255, 255, 255, 0.78);
+        margin: 6px 0 0 0;
+        text-align: left;
+      }
+
+      /* 5×2 grid — evenly spaced (10 warehouses) */
+      .hero-location-buttons {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-rows: repeat(2, auto);
+        gap: 8px 10px;
+        align-items: stretch;
+      }
+
+      .hero-location-buttons .location-button {
+        justify-content: center;
+        gap: 5px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        justify-self: stretch;
+        padding: 0 6px;
+      }
+
+      .hero-location-buttons .location-button-text {
+        flex: 0 1 auto;
+      }
+
+      .hero-location-buttons .location-button-arrow {
+        margin-left: 0;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+      }
+
+      .hero-location-buttons .location-button-arrow svg {
+        width: 8px;
+        height: 7px;
+      }
+
+      .location-button {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 6px 0 10px;
+        height: 32px;
+        background: white;
+        border: 1px solid rgba(4, 12, 51, 0.15);
+        border-radius: 5px;
+        cursor: pointer;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ADADAD;
+        transition: all 0.2s ease;
+        box-shadow: none;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .location-button:hover {
+        border-color: #B7DEFF;
+        color: #050C32;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+
+      .location-button.selected {
+        color: #111;
+        border-color: #3b9eff;
+        box-shadow: 0 0 0 1px #3b9eff, 0 2px 8px rgba(59, 158, 255, 0.12);
+      }
+
+      .location-button-text {
+        font-weight: 600;
+        flex: 1;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .location-button.selected .location-button-text {
+        font-weight: 700;
+        color: #111;
+      }
+
+      .location-button-arrow {
+        margin-left: 6px;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #F5F4F2;
+        border-radius: 5px;
+        flex-shrink: 0;
+      }
+
+      .location-button-arrow svg path {
+        stroke: #ADADAD;
+        transition: stroke 0.2s ease;
+      }
+
+      .location-button.selected .location-button-arrow svg path {
+        stroke: #3b9eff;
+      }
+
+      .hero-stats-panel {
+        padding: 12px 12px 14px;
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        background: rgba(0, 8, 28, 0.45);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(6px);
+      }
+
+      .hero-stats-heading {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.85);
+        margin: 0;
+        text-align: center;
+      }
+
+      .hero-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px 8px;
+      }
+
+      .hero-stat-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .hero-stat-label {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 9px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .hero-stat-value {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: #ffffff;
+      }
+
+      .hero-stat-hint {
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: rgba(255, 255, 255, 0.48);
+        max-width: 120px;
+      }
+
+      .hero-stat-cell-highlight .hero-stat-value.hero-stat-savings {
+        color: #8ec8ff;
+      }
+
+      .hero-stat-savings {
+        color: #8ec8ff;
+      }
+
+      .hero-cta {
+        width: 100%;
+        padding: 12px 16px;
+        background: #050C32;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        transition: background 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .hero-cta:hover {
+        background: #1a2550;
+        box-shadow: 0 4px 12px rgba(5, 12, 50, 0.25);
+      }
+    `;
+  }
+
+  private attachZoneSyncListener() {
+    if (this.zoneSyncListener) return;
+    this.zoneSyncListener = (e: Event) => {
+      const ce = e as CustomEvent<{
+        sourceId?: string;
+        warehouses?: string[];
+        service?: ServiceType;
+      }>;
+      const d = ce.detail;
+      if (!d || d.sourceId === this.instanceId) return;
+
+      if (Array.isArray(d.warehouses)) {
+        this.selectedWarehouses = new Set(d.warehouses);
+      }
+      if (
+        d.service &&
+        (d.service === 'ground' || d.service === 'priority' || d.service === 'expedited')
+      ) {
+        this.activeService = d.service;
+      }
+
+      this.syncServicePillUI();
+      this.updateLegend();
+      this.updateButtonStates();
+      this.updateWarehouseZones();
+    };
+    document.addEventListener('sn-zone-sync', this.zoneSyncListener);
+  }
+
+  private detachZoneSyncListener() {
+    if (this.zoneSyncListener) {
+      document.removeEventListener('sn-zone-sync', this.zoneSyncListener);
+      this.zoneSyncListener = null;
+    }
+  }
+
+  /** Broadcast selection to other widget instances on the page */
+  private dispatchSyncEvent() {
+    document.dispatchEvent(
+      new CustomEvent('sn-zone-sync', {
+        bubbles: true,
+        detail: {
+          sourceId: this.instanceId,
+          warehouses: [...this.selectedWarehouses],
+          service: this.activeService,
+        },
+      })
+    );
+  }
+
+  private syncServicePillUI() {
+    const pillContainer = this.shadow.querySelector('#service-toggle-pills');
+    if (!pillContainer) return;
+    pillContainer.querySelectorAll<HTMLButtonElement>('.service-pill').forEach((pill) => {
+      const sid = pill.dataset.service as ServiceType | undefined;
+      pill.classList.toggle('selected', sid === this.activeService);
+    });
+  }
+
+  private updateButtonStates() {
+    this.shadow.querySelectorAll<HTMLButtonElement>('.location-button').forEach((btn) => {
+      const id = btn.dataset.warehouseId;
+      if (!id) return;
+      btn.classList.toggle('selected', this.selectedWarehouses.has(id));
+    });
+    WAREHOUSES.forEach((wh) => {
+      this.updateWarehouseMarkerAppearance(wh.id, this.selectedWarehouses.has(wh.id));
+    });
   }
 
   private getStyles(): string {
@@ -936,10 +1346,15 @@ export class ShipNetworkZoneMap extends HTMLElement {
     const width = mapContainer.clientWidth || 800;
     const height = mapContainer.clientHeight > 50 ? mapContainer.clientHeight : 600;
 
-    // Ensure container has minimum dimensions
+    // Ensure container has minimum dimensions (hero mode stays narrow ~450px)
     if (width < 50 || height < 50) {
-      mapContainer.style.minWidth = '800px';
-      mapContainer.style.minHeight = '600px';
+      if (this.isHeroMode()) {
+        mapContainer.style.minWidth = '100%';
+        mapContainer.style.minHeight = '240px';
+      } else {
+        mapContainer.style.minWidth = '800px';
+        mapContainer.style.minHeight = '600px';
+      }
     }
 
     // Create static map (dimensions are managed internally at 858×560)
@@ -1085,11 +1500,13 @@ export class ShipNetworkZoneMap extends HTMLElement {
             this.activeService = 'ground';
             this.updateLegend();
             this.updateWarehouseZones();
+            this.dispatchSyncEvent();
           } else {
             this.activeService = pill.dataset.service as ServiceType;
             pill.classList.add('selected');
             this.updateLegend();
             this.updateWarehouseZones();
+            this.dispatchSyncEvent();
           }
         });
       });
@@ -1097,14 +1514,17 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     // Populate location buttons
     const buttonGrid = this.shadow.querySelector('#location-buttons-grid');
-    if (!buttonGrid) return;
 
+    if (buttonGrid) {
     WAREHOUSES.forEach((warehouse) => {
+      const label = this.isHeroMode()
+        ? warehouse.state
+        : `${warehouse.city}, ${warehouse.state}`;
       const button = document.createElement('button');
       button.className = 'location-button';
       button.dataset.warehouseId = warehouse.id;
       button.innerHTML = `
-        <span class="location-button-text">${warehouse.city}, ${warehouse.state}</span>
+        <span class="location-button-text">${label}</span>
         <span class="location-button-arrow"><svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.65989 0.95298L10.5965 0.699711L10.9597 8.54346M0.798361 9.95344L10.5965 0.699711L0.798361 9.95344Z" stroke="#ADADAD" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       `;
 
@@ -1119,10 +1539,12 @@ export class ShipNetworkZoneMap extends HTMLElement {
           this.updateWarehouseMarkerAppearance(warehouse.id, true);
         }
         this.updateWarehouseZones();
+        this.dispatchSyncEvent();
       });
 
       buttonGrid.appendChild(button);
     });
+    }
 
     // Wire PDF download button
     const pdfBtn = this.shadow.querySelector('#pdf-download-btn');
@@ -1149,6 +1571,14 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
       toZip.addEventListener('blur', handleCalculate);
     }
+
+    const heroCta = this.shadow.querySelector('#hero-explore-cta');
+    heroCta?.addEventListener('click', () => {
+      const target =
+        document.querySelector('shipnetwork-zone-map:not([mode="hero"])') ??
+        document.getElementById('full-zone-map');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   /** Rebuild the legend swatches to reflect the active service's colours & day labels */
@@ -1189,10 +1619,12 @@ export class ShipNetworkZoneMap extends HTMLElement {
 
     statsPanel.style.display = 'flex';
 
-    // Scroll the stats panel into view the first time it appears
-    if (!this.statsWereVisible) {
+    // Scroll the stats panel into view the first time it appears (full layout only)
+    if (!this.statsWereVisible && !this.isHeroMode()) {
       this.statsWereVisible = true;
       setTimeout(() => statsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+    } else if (!this.statsWereVisible) {
+      this.statsWereVisible = true;
     }
 
     const avgZoneEl = this.shadow.querySelector('#stat-avg-zone');
@@ -1349,7 +1781,8 @@ export class ShipNetworkZoneMap extends HTMLElement {
     this.selectedWarehouses.add(warehouseId);
     this.updateWarehouseMarkerAppearance(warehouseId, true);
     this.updateWarehouseZones();
-    
+    this.dispatchSyncEvent();
+
     this.dispatchEvent(new CustomEvent('warehouse-selected', {
       detail: { warehouseId, selected: true },
       bubbles: true,
@@ -1361,6 +1794,7 @@ export class ShipNetworkZoneMap extends HTMLElement {
     this.selectedWarehouses.delete(warehouseId);
     this.updateWarehouseMarkerAppearance(warehouseId, false);
     this.updateWarehouseZones();
+    this.dispatchSyncEvent();
 
     this.dispatchEvent(new CustomEvent('warehouse-selected', {
       detail: { warehouseId, selected: false },
