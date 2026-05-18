@@ -2258,8 +2258,9 @@ export class ShipNetworkZoneMap extends HTMLElement {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fields: [
-                { name: 'firstname', value: firstnameInput.value.trim() },
-                { name: 'email',     value: emailInput.value.trim() },
+                { name: 'firstname',  value: firstnameInput.value.trim() },
+                { name: 'email',      value: emailInput.value.trim() },
+                { name: 'lead_type',  value: 'Inbound' },
               ],
               context: {
                 pageUri: window.location.href,
